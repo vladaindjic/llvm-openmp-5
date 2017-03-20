@@ -19,7 +19,7 @@ if(LIBOMPTARGET_DEP_LIBELF_FOUND)
       # Define the suffix for the runtime messaging dumps.
       add_definitions(-DTARGET_NAME=CUDA)
     
-      if(CMAKE_BUILD_TYPE MATCHES Debug)
+      if(LIBOMPTARGET_CMAKE_BUILD_TYPE MATCHES debug)
           add_definitions(-DCUDA_ERROR_REPORT)
       endif()
       
@@ -34,11 +34,12 @@ if(LIBOMPTARGET_DEP_LIBELF_FOUND)
         src/ompt-cupti.cpp
         src/rtl.cpp
       )
+      include_directories(${LIBOMPTARGET_DEP_LIBELF_INCLUDE_DIRS})
     
       add_library(omptarget.rtl.cuda SHARED ${CUDA_SRCFILES})
       
       # Install plugin under the lib destination folder.
-      install(TARGETS omptarget.rtl.cuda LIBRARY DESTINATION "lib")
+      install(TARGETS omptarget.rtl.cuda LIBRARY DESTINATION lib${LIBOMPTARGET_LIBDIR_SUFFIX})
       
       target_link_libraries(omptarget.rtl.cuda 
         ${LIBOMPTARGET_DEP_CUDA_LIBRARIES} 

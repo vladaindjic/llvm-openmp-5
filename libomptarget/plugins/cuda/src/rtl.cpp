@@ -15,7 +15,6 @@
 #include <cstddef>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
-#include <libelf.h>
 #include <list>
 #include <string>
 #include <vector>
@@ -25,12 +24,14 @@
 #include "ompt-cupti.hpp"
 
 #ifndef TARGET_NAME
-#define TARGET_NAME Generic - 64bit
+#define TARGET_NAME CUDA
 #endif
 
 #define GETNAME2(name) #name
 #define GETNAME(name) GETNAME2(name)
 #define DP(...) DEBUGP("Target " GETNAME(TARGET_NAME) " RTL", __VA_ARGS__)
+
+#include "../../common/elf_common.c"
 
 // Utility for retrieving and printing CUDA error string.
 #ifdef CUDA_ERROR_REPORT
@@ -44,14 +45,6 @@
 #define CUDA_ERR_STRING(err)                                                   \
   {}
 #endif
-
-/// Account the memory allocated per device.
-struct AllocMemEntryTy {
-  int64_t TotalSize;
-  std::vector<std::pair<void *, int64_t>> Ptrs;
-
-  AllocMemEntryTy() : TotalSize(0) {}
-};
 
 /// Keep entries table per device.
 struct FuncOrGblEntryTy {
@@ -247,51 +240,7 @@ extern "C" {
 #endif
 
 int32_t __tgt_rtl_is_valid_binary(__tgt_device_image *image) {
-
-  // Is the library version incompatible with the header file?
-  if (elf_version(EV_CURRENT) == EV_NONE) {
-    DP("Incompatible ELF library!\n");
-    return 0;
-  }
-
-  char *img_begin = (char *)image->ImageStart;
-  char *img_end = (char *)image->ImageEnd;
-  size_t img_size = img_end - img_begin;
-
-  // Obtain elf handler
-  Elf *e = elf_memory(img_begin, img_size);
-  if (!e) {
-    DP("Unable to get ELF handle: %s!\n", elf_errmsg(-1));
-    return 0;
-  }
-
-  // Check if ELF is the right kind.
-  if (elf_kind(e) != ELF_K_ELF) {
-    DP("Unexpected ELF type!\n");
-    return 0;
-  }
-  Elf64_Ehdr *eh64 = elf64_getehdr(e);
-  Elf32_Ehdr *eh32 = elf32_getehdr(e);
-
-  if (!eh64 && !eh32) {
-    DP("Unable to get machine ID from ELF file!\n");
-    elf_end(e);
-    return 0;
-  }
-
-  uint16_t MachineID;
-  if (eh64 && !eh32)
-    MachineID = eh64->e_machine;
-  else if (eh32 && !eh64)
-    MachineID = eh32->e_machine;
-  else {
-    DP("Ambiguous ELF header!\n");
-    elf_end(e);
-    return 0;
-  }
-
-  elf_end(e);
-  return MachineID == 190; // EM_CUDA = 190.
+  return elf_check_machine(image, 190); // EM_CUDA = 190.
 }
 
 int32_t __tgt_rtl_number_of_devices() { return DeviceInfo.NumberOfDevices; }
@@ -497,7 +446,7 @@ __tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
         return NULL;
       }
 
-      err = cuMemcpyDtoH(&ExecModeVal, (CUdeviceptr)ExecModePtr, cusize);
+      err = cuMemcpyDtoH(&ExecModeVal, ExecModePtr, cusize);
       if (err != CUDA_SUCCESS) {
         DP("Error when copying data from device to host. Pointers: "
            "host = " DPxMOD ", device = " DPxMOD ", size = %zd\n",
@@ -685,14 +634,12 @@ int32_t __tgt_rtl_run_target_team_region(int32_t device_id, void *tgt_entry_ptr,
     DP("Using requested number of teams %d\n", team_num);
   }
 
-  int nshared = 0;
-
   // Run on the device.
   DP("Launch kernel with %d blocks and %d threads\n", cudaBlocksPerGrid,
      cudaThreadsPerBlock);
 
   err = cuLaunchKernel(KernelInfo->Func, cudaBlocksPerGrid, 1, 1,
-      cudaThreadsPerBlock, 1, 1, nshared, 0, &args[0], 0);
+      cudaThreadsPerBlock, 1, 1, 0 /*bytes of shared memory*/, 0, &args[0], 0);
   if (err != CUDA_SUCCESS) {
     DP("Device kernel launch failed!\n");
     CUDA_ERR_STRING(err);
@@ -703,14 +650,12 @@ int32_t __tgt_rtl_run_target_team_region(int32_t device_id, void *tgt_entry_ptr,
   DP("Launch of entry point at " DPxMOD " successful!\n",
       DPxPTR(tgt_entry_ptr));
 
-#ifdef OMPTARGET_DEBUG
   if (cudaDeviceSynchronize() != cudaSuccess) {
     DP("Kernel execution error at " DPxMOD ".\n", DPxPTR(tgt_entry_ptr));
     return OFFLOAD_FAIL;
   } else {
     DP("Kernel execution at " DPxMOD " successful!\n", DPxPTR(tgt_entry_ptr));
   }
-#endif
 
   return OFFLOAD_SUCCESS;
 }

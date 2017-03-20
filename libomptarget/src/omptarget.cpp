@@ -316,7 +316,7 @@ struct LookupResult {
 
   HostDataToTargetListTy::iterator Entry;
 
-  LookupResult() : Flags({0,0,0}), Entry(0) {}
+  LookupResult() : Flags({0,0,0}), Entry() {}
 };
 
 /// Map for shadow pointers
@@ -362,17 +362,12 @@ struct DeviceTy {
   // The existence of mutexes makes DeviceTy non-copyable. We need to
   // provide a copy constructor and an assignment operator explicitly.
   DeviceTy(const DeviceTy &d)
-      : InitFlag(), DataMapMtx(), PendingGlobalsMtx(), ShadowMtx() {
-    DeviceID = d.DeviceID;
-    RTL = d.RTL;
-    RTLDeviceID = d.RTLDeviceID;
-    IsInit = d.IsInit;
-    HasPendingGlobals = d.HasPendingGlobals;
-    HostDataToTargetMap = d.HostDataToTargetMap;
-    PendingCtorsDtors = d.PendingCtorsDtors;
-    ShadowPtrMap = d.ShadowPtrMap;
-    loopTripCnt = d.loopTripCnt;
-  }
+      : DeviceID(d.DeviceID), RTL(d.RTL), RTLDeviceID(d.RTLDeviceID),
+        IsInit(d.IsInit), InitFlag(), HasPendingGlobals(d.HasPendingGlobals),
+        HostDataToTargetMap(d.HostDataToTargetMap),
+        PendingCtorsDtors(d.PendingCtorsDtors), ShadowPtrMap(d.ShadowPtrMap),
+        DataMapMtx(), PendingGlobalsMtx(),
+        ShadowMtx(), loopTripCnt(d.loopTripCnt) {}
 
   DeviceTy& operator=(const DeviceTy &d) {
     DeviceID = d.DeviceID;
@@ -389,14 +384,14 @@ struct DeviceTy {
   }
 
   long getMapEntryRefCnt(void *HstPtrBegin);
-  LookupResult lookupMapping(void *HstPtrBegin, long Size);
-  void *getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, long Size,
-      long &IsNew, long IsImplicit, long UpdateRefCount = true);
-  void *getTgtPtrBegin(void *HstPtrBegin, long Size);
-  void *getTgtPtrBegin(void *HstPtrBegin, long Size, long &IsLast,
-      long UpdateRefCount);
-  int deallocTgtPtr(void *TgtPtrBegin, long Size, long ForceDelete);
-  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, long Size);
+  LookupResult lookupMapping(void *HstPtrBegin, int64_t Size);
+  void *getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, int64_t Size,
+      bool &IsNew, bool IsImplicit, bool UpdateRefCount = true);
+  void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size);
+  void *getTgtPtrBegin(void *HstPtrBegin, int64_t Size, bool &IsLast,
+      bool UpdateRefCount);
+  int deallocTgtPtr(void *TgtPtrBegin, int64_t Size, bool ForceDelete);
+  int associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
   int disassociatePtr(void *HstPtrBegin);
 
   // calls to RTL
@@ -415,6 +410,10 @@ private:
   // Call to RTL
   void init(); // To be called only via DeviceTy::initOnce()
 };
+
+/// Map between Device ID (i.e. openmp device id) and its DeviceTy.
+typedef std::vector<DeviceTy> DevicesTy;
+static DevicesTy Devices;
 
 struct RTLInfoTy {
   typedef int32_t(is_valid_binary_ty)(void *);
@@ -496,10 +495,6 @@ struct RTLInfoTy {
   }
 };
 
-/// Map between Device ID (i.e. openmp device id) and its DeviceTy.
-typedef std::vector<DeviceTy> DevicesTy;
-static DevicesTy Devices;
-
 /// RTLs identified in the system.
 class RTLsTy {
 private:
@@ -529,11 +524,9 @@ void RTLsTy::LoadRTLs() {
 
   // Parse environment variable OMP_TARGET_OFFLOAD (if set)
   char *envStr = getenv("OMP_TARGET_OFFLOAD");
-  if (envStr) {
-    if (!strcmp(envStr, "DISABLED")) {
-      DP("Target offloading disabled by environment\n");
-      return;
-    }
+  if (envStr && !strcmp(envStr, "DISABLED")) {
+    DP("Target offloading disabled by environment\n");
+    return;
   }
 
   // initialize the OMPT tools interface
@@ -652,8 +645,8 @@ typedef std::map<void *, TableMap> HostPtrToTableMapTy;
 static HostPtrToTableMapTy HostPtrToTableMap;
 static std::mutex TblMapMtx;
 
-// Check whether a device has an associated RTL and initialize it if it's not
-// already initialized.
+/// Check whether a device has an associated RTL and initialize it if it's not
+/// already initialized.
 static bool device_is_ready(int device_num) {
   DP("Checking whether device %d is ready.\n", device_num);
   // Devices.size() can only change while registering a new
@@ -668,12 +661,14 @@ static bool device_is_ready(int device_num) {
 
   // Get device info
   DeviceTy &Device = Devices[device_num];
+
+  DP("Is the device %d (local ID %d) initialized? %d\n", device_num,
+       Device.RTLDeviceID, Device.IsInit);
+
   // Init the device if not done before
-  if (!Device.IsInit) {
-    if (Device.initOnce() != OFFLOAD_SUCCESS) {
-      DP("Failed to init device %d\n", device_num);
-      return false;
-    }
+  if (!Device.IsInit && Device.initOnce() != OFFLOAD_SUCCESS) {
+    DP("Failed to init device %d\n", device_num);
+    return false;
   }
 
   DP("Device %d is ready to use.\n", device_num);
@@ -682,9 +677,8 @@ static bool device_is_ready(int device_num) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// getter and setter
+// Target API functions
 //
-
 EXTERN int omp_get_num_devices(void) {
   RTLsMtx.lock();
   size_t Devices_size = Devices.size();
@@ -743,6 +737,11 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
     return;
   }
 
+  if (!device_is_ready(device_num)) {
+    DP("omp_target_free returns, nothing to do\n");
+    return;
+  }
+
   DeviceTy &Device = Devices[device_num];
   Device.RTL->data_delete(Device.RTLDeviceID, (void *)device_ptr);
   DP("omp_target_free deallocated device ptr\n");
@@ -762,8 +761,17 @@ EXTERN int omp_target_is_present(void *ptr, int device_num) {
     return true;
   }
 
+  RTLsMtx.lock();
+  size_t Devices_size = Devices.size();
+  RTLsMtx.unlock();
+  if (Devices_size <= (size_t)device_num) {
+    DP("Call to omp_target_is_present with invalid device ID, returning "
+        "false\n");
+    return false;
+  }
+
   DeviceTy& Device = Devices[device_num];
-  long IsLast; // not used
+  bool IsLast; // not used
   int rc = (Device.getTgtPtrBegin(ptr, 0, IsLast, false) != NULL);
   DP("Call to omp_target_is_present returns %d\n", rc);
   return rc;
@@ -781,17 +789,15 @@ EXTERN int omp_target_memcpy(void *dst, void *src, size_t length,
     return OFFLOAD_FAIL;
   }
 
-  if (src_device != omp_get_initial_device())
-    if (!device_is_ready(src_device)) {
+  if (src_device != omp_get_initial_device() && !device_is_ready(src_device)) {
       DP("omp_target_memcpy returns OFFLOAD_FAIL\n");
       return OFFLOAD_FAIL;
-    }
+  }
 
-  if (dst_device != omp_get_initial_device())
-    if (!device_is_ready(dst_device)) {
+  if (dst_device != omp_get_initial_device() && !device_is_ready(dst_device)) {
       DP("omp_target_memcpy returns OFFLOAD_FAIL\n");
       return OFFLOAD_FAIL;
-    }
+  }
 
   int rc = OFFLOAD_SUCCESS;
   void *srcAddr = (char *)src + src_offset;
@@ -937,7 +943,7 @@ EXTERN int omp_target_disassociate_ptr(void *host_ptr, int device_num) {
 ////////////////////////////////////////////////////////////////////////////////
 // functionality for device
 
-int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, long Size) {
+int DeviceTy::associatePtr(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size) {
   DataMapMtx.lock();
 
   // Check if entry exists
@@ -1031,7 +1037,7 @@ long DeviceTy::getMapEntryRefCnt(void *HstPtrBegin) {
   return RefCnt;
 }
 
-LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, long Size) {
+LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, int64_t Size) {
   uintptr_t hp = (uintptr_t)HstPtrBegin;
   LookupResult lr;
 
@@ -1072,8 +1078,8 @@ LookupResult DeviceTy::lookupMapping(void *HstPtrBegin, long Size) {
 // Increment the reference counter.
 // If NULL is returned, then either data allocation failed or the user tried
 // to do an illegal mapping.
-void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, long Size,
-    long &IsNew, long IsImplicit, long UpdateRefCount) {
+void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
+    int64_t Size, bool &IsNew, bool IsImplicit, bool UpdateRefCount) {
   void *rc = NULL;
   DataMapMtx.lock();
   LookupResult lr = lookupMapping(HstPtrBegin, Size);
@@ -1117,8 +1123,8 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase, long Size,
 // Used by target_data_begin, target_data_end, target_data_update and target.
 // Return the target pointer begin (where the data will be moved).
 // Decrement the reference counter if called from target_data_end.
-void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, long Size, long &IsLast,
-    long UpdateRefCount) {
+void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, int64_t Size, bool &IsLast,
+    bool UpdateRefCount) {
   void *rc = NULL;
   DataMapMtx.lock();
   LookupResult lr = lookupMapping(HstPtrBegin, Size);
@@ -1147,7 +1153,7 @@ void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, long Size, long &IsLast,
 
 // Return the target pointer begin (where the data will be moved).
 // Lock-free version called from within assertions.
-void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, long Size) {
+void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, int64_t Size) {
   uintptr_t hp = (uintptr_t)HstPtrBegin;
   LookupResult lr = lookupMapping(HstPtrBegin, Size);
   if (lr.Flags.IsContained || lr.Flags.ExtendsBefore || lr.Flags.ExtendsAfter) {
@@ -1159,7 +1165,7 @@ void *DeviceTy::getTgtPtrBegin(void *HstPtrBegin, long Size) {
   return NULL;
 }
 
-int DeviceTy::deallocTgtPtr(void *HstPtrBegin, long Size, long ForceDelete) {
+int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
   // Check if the pointer is contained in any sub-nodes.
   int rc;
   DataMapMtx.lock();
@@ -1189,7 +1195,7 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, long Size, long ForceDelete) {
   return rc;
 }
 
-// Init device, should not be called directly.
+/// Init device, should not be called directly.
 void DeviceTy::init() {
   ompt_target_operation_begin();
   int32_t rc = RTL->init_device(RTLDeviceID, DeviceID);
@@ -1199,7 +1205,7 @@ void DeviceTy::init() {
   }
 }
 
-// Thread-safe method to initialize the device only once.
+/// Thread-safe method to initialize the device only once.
 int32_t DeviceTy::initOnce() {
   std::call_once(InitFlag, &DeviceTy::init, this);
 
@@ -1297,6 +1303,38 @@ static void RegisterImageIntoTranslationTable(TranslationTable &TT,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Functionality for registering Ctors/Dtors
+
+static void RegisterGlobalCtorsDtorsForImage(__tgt_bin_desc *desc,
+    __tgt_device_image *img, RTLInfoTy *RTL) {
+
+  for (int32_t i = 0; i < RTL->NumberOfDevices; ++i) {
+    DeviceTy &Device = Devices[RTL->Idx + i];
+    Device.PendingGlobalsMtx.lock();
+    Device.HasPendingGlobals = true;
+    for (__tgt_offload_entry *entry = img->EntriesBegin;
+        entry != img->EntriesEnd; ++entry) {
+      if (entry->flags & OMP_DECLARE_TARGET_CTOR) {
+        DP("Adding ctor " DPxMOD " to the pending list.\n",
+            DPxPTR(entry->addr));
+        Device.PendingCtorsDtors[desc].PendingCtors.push_back(entry->addr);
+      } else if (entry->flags & OMP_DECLARE_TARGET_DTOR) {
+        // Dtors are pushed in reverse order so they are executed from end
+        // to beginning when unregistering the library!
+        DP("Adding dtor " DPxMOD " to the pending list.\n",
+            DPxPTR(entry->addr));
+        Device.PendingCtorsDtors[desc].PendingDtors.push_front(entry->addr);
+      }
+
+      if (entry->flags & OMP_DECLARE_TARGET_LINK) {
+        DP("The \"link\" attribute is not yet supported!\n");
+      }
+    }
+    Device.PendingGlobalsMtx.unlock();
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// adds a target shared library to the target execution image
 EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
 
@@ -1305,7 +1343,7 @@ EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
 
   RTLsMtx.lock();
   // Register the images with the RTLs that understand them, if any.
-  for (int32_t i = 0; i < desc->NumDevices; ++i) {
+  for (int32_t i = 0; i < desc->NumDeviceImages; ++i) {
     // Obtain the image.
     __tgt_device_image *img = &desc->DeviceImages[i];
 
@@ -1356,55 +1394,32 @@ EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
 
       // Initialize (if necessary) translation table for this library.
       TrlTblMtx.lock();
-      if(!HostEntriesBeginToTransTable.count(desc->EntriesBegin)){
+      if(!HostEntriesBeginToTransTable.count(desc->HostEntriesBegin)){
         TranslationTable &tt =
-            HostEntriesBeginToTransTable[desc->EntriesBegin];
-        tt.HostTable.EntriesBegin = desc->EntriesBegin;
-        tt.HostTable.EntriesEnd = desc->EntriesEnd;
+            HostEntriesBeginToTransTable[desc->HostEntriesBegin];
+        tt.HostTable.EntriesBegin = desc->HostEntriesBegin;
+        tt.HostTable.EntriesEnd = desc->HostEntriesEnd;
       }
 
       // Retrieve translation table for this library.
       TranslationTable &TransTable =
-          HostEntriesBeginToTransTable[desc->EntriesBegin];
+          HostEntriesBeginToTransTable[desc->HostEntriesBegin];
 
       DP("Registering image " DPxMOD " with RTL %s!\n",
           DPxPTR(img->ImageStart), R.RTLName.c_str());
       RegisterImageIntoTranslationTable(TransTable, R, img);
       TrlTblMtx.unlock();
       FoundRTL = &R;
+
+      // Load ctors/dtors for static objects
+      RegisterGlobalCtorsDtorsForImage(desc, img, FoundRTL);
+
+      // if an RTL was found we are done - proceed to register the next image
       break;
     }
 
-    // if an RTL was found we are done - proceed to register the next image
     if (!FoundRTL) {
       DP("No RTL found for image " DPxMOD "!\n", DPxPTR(img->ImageStart));
-      continue;
-    }
-
-    // Load ctors/dtors for static objects
-    for (int32_t i = 0; i < FoundRTL->NumberOfDevices; ++i) {
-      DeviceTy &Device = Devices[i];
-      Device.PendingGlobalsMtx.lock();
-      Device.HasPendingGlobals = true;
-      for (__tgt_offload_entry *entry = img->EntriesBegin;
-          entry != img->EntriesEnd; ++entry) {
-        if (entry->flags & OMP_DECLARE_TARGET_CTOR) {
-          DP("Adding ctor " DPxMOD " to the pending list.\n",
-              DPxPTR(entry->addr));
-          Device.PendingCtorsDtors[desc].PendingCtors.push_back(entry->addr);
-        } else if (entry->flags & OMP_DECLARE_TARGET_DTOR) {
-          // Dtors are pushed in reverse order so they are executed from end
-          // to beginning when unregistering the library!
-          DP("Adding dtor " DPxMOD " to the pending list.\n",
-              DPxPTR(entry->addr));
-          Device.PendingCtorsDtors[desc].PendingDtors.push_front(entry->addr);
-        }
-
-        if (entry->flags & OMP_DECLARE_TARGET_LINK) {
-          DP("The \"link\" attribute is not yet supported!\n");
-        }
-      }
-      Device.PendingGlobalsMtx.unlock();
     }
   }
   RTLsMtx.unlock();
@@ -1420,7 +1435,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
 
   RTLsMtx.lock();
   // Find which RTL understands each image, if any.
-  for (int32_t i = 0; i < desc->NumDevices; ++i) {
+  for (int32_t i = 0; i < desc->NumDeviceImages; ++i) {
     // Obtain the image.
     __tgt_device_image *img = &desc->DeviceImages[i];
 
@@ -1446,7 +1461,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
       // Execute dtors for static objects if the device has been used, i.e.
       // if its PendingCtors list has been emptied.
       for (int32_t i = 0; i < FoundRTL->NumberOfDevices; ++i) {
-        DeviceTy &Device = Devices[i];
+        DeviceTy &Device = Devices[FoundRTL->Idx + i];
         Device.PendingGlobalsMtx.lock();
         if (Device.PendingCtorsDtors[desc].PendingCtors.empty()) {
           for (auto &dtor : Device.PendingCtorsDtors[desc].PendingDtors) {
@@ -1462,27 +1477,16 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
         Device.PendingGlobalsMtx.unlock();
       }
 
-      // Remove translation table for this image.
-      TrlTblMtx.lock();
-      auto tt = HostEntriesBeginToTransTable.find(desc->EntriesBegin);
-      if (tt != HostEntriesBeginToTransTable.end()) {
-        HostEntriesBeginToTransTable.erase(tt);
-        DP("Unregistering image " DPxMOD " from RTL " DPxMOD "!\n",
-            DPxPTR(img->ImageStart), DPxPTR(R->LibraryHandler));
-      } else {
-        DP("Translation table for image " DPxMOD " cannot be found, probably "
-            "it has been already removed.\n", DPxPTR(img->ImageStart));
-      }
+      DP("Unregistered image " DPxMOD " from RTL " DPxMOD "!\n",
+          DPxPTR(img->ImageStart), DPxPTR(R->LibraryHandler));
 
-      TrlTblMtx.unlock();
       break;
     }
 
-    // if an RTL was not found proceed to unregister the next image
+    // if no RTL was found proceed to unregister the next image
     if (!FoundRTL){
       DP("No RTLs in use support the image " DPxMOD "!\n",
           DPxPTR(img->ImageStart));
-      continue;
     }
   }
   RTLsMtx.unlock();
@@ -1490,10 +1494,22 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
 
   // Remove entries from HostPtrToTableMap
   TblMapMtx.lock();
-  for (__tgt_offload_entry *cur = desc->EntriesBegin;
-      cur < desc->EntriesEnd; ++cur) {
+  for (__tgt_offload_entry *cur = desc->HostEntriesBegin;
+      cur < desc->HostEntriesEnd; ++cur) {
     HostPtrToTableMap.erase(cur->addr);
   }
+
+  // Remove translation table for this descriptor.
+  auto tt = HostEntriesBeginToTransTable.find(desc->HostEntriesBegin);
+  if (tt != HostEntriesBeginToTransTable.end()) {
+    DP("Removing translation table for descriptor " DPxMOD "\n",
+        DPxPTR(desc->HostEntriesBegin));
+    HostEntriesBeginToTransTable.erase(tt);
+  } else {
+    DP("Translation table for descriptor " DPxMOD " cannot be found, probably "
+        "it has been already removed.\n", DPxPTR(desc->HostEntriesBegin));
+  }
+
   TblMapMtx.unlock();
 
   // TODO: Remove RTL and the devices it manages if it's not used anymore?
@@ -1623,40 +1639,22 @@ static int InitLibrary(DeviceTy& Device) {
 // Check whether a device has been initialized, global ctors have been
 // executed and global data has been mapped; do so if not already done.
 static int CheckDevice(int32_t device_id) {
-  // Get device info.
-  DeviceTy &Device = Devices[device_id];
-
-  // No devices available?
-  // Devices.size() can only change while registering a new
-  // library, so try to acquire the lock of RTLs' mutex.
-  RTLsMtx.lock();
-  size_t Devices_size = Devices.size();
-  RTLsMtx.unlock();
-  if (!(device_id >= 0 && (size_t)device_id < Devices_size)) {
-    DP("Device ID %d does not have a matching RTL.\n", device_id);
+  // Is device ready?
+  if (!device_is_ready(device_id)) {
+    DP("Device %d is not ready.\n", device_id);
     return OFFLOAD_FAIL;
   }
 
-  DP("Is the device %d (local ID %d) initialized? %d\n", device_id,
-     Device.RTLDeviceID, Device.IsInit);
-
-  // Init the device if not done before.
-  if (!Device.IsInit) {
-    if (Device.initOnce() != OFFLOAD_SUCCESS) {
-      DP("Failed to init device %d\n", device_id);
-      return OFFLOAD_FAIL;
-    }
-  }
+  // Get device info.
+  DeviceTy &Device = Devices[device_id];
 
   // Check whether global data has been mapped for this device
   Device.PendingGlobalsMtx.lock();
   bool hasPendingGlobals = Device.HasPendingGlobals;
   Device.PendingGlobalsMtx.unlock();
-  if (hasPendingGlobals) {
-    if (InitLibrary(Device) != OFFLOAD_SUCCESS) {
-      DP("Failed to init globals on device %d\n", device_id);
-      return OFFLOAD_FAIL;
-    }
+  if (hasPendingGlobals && InitLibrary(Device) != OFFLOAD_SUCCESS) {
+    DP("Failed to init globals on device %d\n", device_id);
+    return OFFLOAD_FAIL;
   }
 
   return OFFLOAD_SUCCESS;
@@ -1690,7 +1688,7 @@ struct combined_entry_t {
 static void translate_map(int32_t arg_num, void **args_base, void **args,
     int64_t *arg_sizes, int32_t *arg_types, int32_t &new_arg_num,
     void **&new_args_base, void **&new_args, int64_t *&new_arg_sizes,
-    int64_t *&new_arg_types, long is_target_construct) {
+    int64_t *&new_arg_types, bool is_target_construct) {
   if (arg_num <= 0) {
     DP("Nothing to translate\n");
     new_arg_num = 0;
@@ -1706,19 +1704,22 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
   bool *is_ptr_old = (bool *) alloca(arg_num * sizeof(bool));
   // old entry is member of member_of[old] cmb_entry
   int *member_of = (int *) alloca(arg_num * sizeof(int));
+  // temporary storage for modifications of the original arg_types
+  int32_t *mod_arg_types = (int32_t *) alloca(arg_num  *sizeof(int32_t));
 
   DP("Translating %d map entries\n", arg_num);
   for (int i = 0; i < arg_num; ++i) {
     member_of[i] = -1;
     is_ptr_old[i] = false;
+    mod_arg_types[i] = arg_types[i];
     // Scan previous entries to see whether this entry shares the same base
     for (int j = 0; j < i; ++j) {
       void *new_begin_addr = NULL;
       void *new_end_addr = NULL;
 
-      if (arg_types[i] & OMP_TGT_OLDMAPTYPE_MAP_PTR) {
+      if (mod_arg_types[i] & OMP_TGT_OLDMAPTYPE_MAP_PTR) {
         if (args_base[i] == args[j]) {
-          if (!(arg_types[j] & OMP_TGT_OLDMAPTYPE_MAP_PTR)) {
+          if (!(mod_arg_types[j] & OMP_TGT_OLDMAPTYPE_MAP_PTR)) {
             DP("Entry %d has the same base as entry %d's begin address\n", i,
                 j);
             new_begin_addr = args_base[i];
@@ -1728,10 +1729,18 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
           } else {
             DP("Entry %d has the same base as entry %d's begin address, but "
                 "%d's base was a MAP_PTR too\n", i, j, j);
+            int32_t to_from_always_delete =
+                OMP_TGT_OLDMAPTYPE_TO | OMP_TGT_OLDMAPTYPE_FROM |
+                OMP_TGT_OLDMAPTYPE_ALWAYS | OMP_TGT_OLDMAPTYPE_DELETE;
+            if (mod_arg_types[j] & to_from_always_delete) {
+              DP("Resetting to/from/always/delete flags for entry %d because "
+                  "it is only a pointer to pointer\n", j);
+              mod_arg_types[j] &= ~to_from_always_delete;
+            }
           }
         }
       } else {
-        if (!(arg_types[i] & OMP_TGT_OLDMAPTYPE_FIRST_MAP) &&
+        if (!(mod_arg_types[i] & OMP_TGT_OLDMAPTYPE_FIRST_MAP) &&
             args_base[i] == args_base[j]) {
           DP("Entry %d has the same base address as entry %d\n", i, j);
           new_begin_addr = args[i];
@@ -1749,7 +1758,7 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
           // Initialize new entry
           cmb_entries[id].num_members = 1;
           cmb_entries[id].base_addr = args_base[j];
-          if (arg_types[j] & OMP_TGT_OLDMAPTYPE_MAP_PTR) {
+          if (mod_arg_types[j] & OMP_TGT_OLDMAPTYPE_MAP_PTR) {
             cmb_entries[id].begin_addr = args_base[j];
             cmb_entries[id].end_addr = (char *)args_base[j] + arg_sizes[j];
           } else {
@@ -1827,7 +1836,7 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
     new_args_base[nid] = args_base[i];
     new_args[nid] = args[i];
     new_arg_sizes[nid] = arg_sizes[i];
-    int64_t old_type = arg_types[i];
+    int64_t old_type = mod_arg_types[i];
 
     if (is_ptr_old[i]) {
       // Reset TO and FROM flags
@@ -1892,9 +1901,9 @@ static int target_data_begin(DeviceTy &Device, int32_t arg_num,
     void *HstPtrBase = args_base[i];
     // Address of pointer on the host and device, respectively.
     void *Pointer_HstPtrBegin, *Pointer_TgtPtrBegin;
-    long IsNew, Pointer_IsNew;
-    long IsImplicit = arg_types[i] & OMP_TGT_MAPTYPE_IMPLICIT;
-    long UpdateRef = !(arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF);
+    bool IsNew, Pointer_IsNew;
+    bool IsImplicit = arg_types[i] & OMP_TGT_MAPTYPE_IMPLICIT;
+    bool UpdateRef = !(arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF);
     if (arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ) {
       DP("Has a pointer entry: \n");
       // base is address of pointer.
@@ -1930,7 +1939,7 @@ static int target_data_begin(DeviceTy &Device, int32_t arg_num,
       if (arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ)
         ret_ptr = Pointer_TgtPtrBegin;
       else {
-        long IsLast; // not used
+        bool IsLast; // not used
         ret_ptr = Device.getTgtPtrBegin(HstPtrBegin, 0, IsLast, false);
       }
 
@@ -2052,10 +2061,10 @@ static int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
       continue;
 
     void *HstPtrBegin = args[i];
-    long IsLast;
-    long UpdateRef = !(arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) ||
+    bool IsLast;
+    bool UpdateRef = !(arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) ||
         (arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ);
-    long ForceDelete = arg_types[i] & OMP_TGT_MAPTYPE_DELETE;
+    bool ForceDelete = arg_types[i] & OMP_TGT_MAPTYPE_DELETE;
 
     // If PTR_AND_OBJ, HstPtrBegin is address of pointee
     void *TgtPtrBegin = Device.getTgtPtrBegin(HstPtrBegin, arg_sizes[i], IsLast,
@@ -2064,18 +2073,18 @@ static int target_data_end(DeviceTy &Device, int32_t arg_num, void **args_base,
         " - is%s last\n", arg_sizes[i], DPxPTR(TgtPtrBegin),
         (IsLast ? "" : " not"));
 
+    bool DelEntry = IsLast || ForceDelete;
+
     if ((arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) &&
         !(arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
-      IsLast = false; // protect parent struct from being deallocated
+      DelEntry = false; // protect parent struct from being deallocated
     }
-
-    long DelEntry = IsLast || ForceDelete;
 
     if ((arg_types[i] & OMP_TGT_MAPTYPE_FROM) || DelEntry) {
       // Move data back to the host
       if (arg_types[i] & OMP_TGT_MAPTYPE_FROM) {
-        long Always = arg_types[i] & OMP_TGT_MAPTYPE_ALWAYS;
-        long CopyMember = false;
+        bool Always = arg_types[i] & OMP_TGT_MAPTYPE_ALWAYS;
+        bool CopyMember = false;
         if ((arg_types[i] & OMP_TGT_MAPTYPE_MEMBER_OF) &&
             !(arg_types[i] & OMP_TGT_MAPTYPE_PTR_AND_OBJ)) {
           // Copy data only if the "parent" struct has RefCount==1.
@@ -2231,7 +2240,7 @@ EXTERN void __tgt_target_data_update(int32_t device_id, int32_t arg_num,
 
     void *HstPtrBegin = args[i];
     int64_t MapSize = arg_sizes[i];
-    long IsLast;
+    bool IsLast;
     void *TgtPtrBegin = Device.getTgtPtrBegin(HstPtrBegin, MapSize, IsLast,
         false);
 
@@ -2389,7 +2398,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     void *HstPtrBegin = args[i];
     void *HstPtrBase = args_base[i];
     void *TgtPtrBase;
-    long IsLast; // unused.
+    bool IsLast; // unused.
     if (arg_types[i] & OMP_TGT_MAPTYPE_LITERAL) {
       DP("Forwarding first-private value " DPxMOD " to the target construct\n",
           DPxPTR(HstPtrBase));
@@ -2403,6 +2412,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
             (arg_types[i] & OMP_TGT_MAPTYPE_TO ? "first-" : ""),
             DPxPTR(HstPtrBegin));
         rc = OFFLOAD_FAIL;
+        break;
       } else {
         fpArrays.push_back(TgtPtrBegin);
         uint64_t PtrDelta = (uint64_t)HstPtrBegin - (uint64_t)HstPtrBase;
@@ -2418,6 +2428,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
           if (rt != OFFLOAD_SUCCESS) {
             DP ("Copying data to device failed.\n");
             rc = OFFLOAD_FAIL;
+            break;
           }
         }
       }
