@@ -18,7 +18,6 @@
 #include "ompt-specific.cpp"
 
 
-
 /*****************************************************************************
  * macros
  ****************************************************************************/
@@ -306,6 +305,16 @@ OMPT_API_ROUTINE int ompt_enumerate_state(int current_state, int *next_state,
 /*****************************************************************************
  * callbacks
  ****************************************************************************/
+OMPT_API_ROUTINE ompt_task_id_t ompt_get_task_id(int depth)
+{
+    return __ompt_get_task_id_internal(depth);
+}
+
+
+OMPT_API_ROUTINE ompt_frame_t *ompt_get_task_frame(int depth)
+{
+    return __ompt_get_task_frame_internal(depth);
+}
 
 OMPT_API_ROUTINE int ompt_set_callback(ompt_event_t evid, ompt_callback_t cb)
 {
@@ -315,6 +324,8 @@ OMPT_API_ROUTINE int ompt_set_callback(ompt_event_t evid, ompt_callback_t cb)
     case event_name:                                                           \
         if (ompt_event_implementation_status(event_name)) {                    \
             ompt_callbacks.ompt_callback(event_name) = (callback_type) cb;     \
+	    printf("In OMPT_SET_CALLBACK\n");			       \
+	    printf("The current evid: %d\n", evid);					       \
         }                                                                      \
         return ompt_event_implementation_status(event_name);
 
@@ -409,6 +420,7 @@ OMPT_API_ROUTINE ompt_thread_id_t ompt_get_thread_id(void)
     return __ompt_get_thread_id_internal();
 }
 
+#if 0
 OMPT_API_ROUTINE ompt_task_id_t ompt_get_task_id(int depth)
 {
     return __ompt_get_task_id_internal(depth);
@@ -419,6 +431,7 @@ OMPT_API_ROUTINE ompt_frame_t *ompt_get_task_frame(int depth)
 {
     return __ompt_get_task_frame_internal(depth);
 }
+#endif
 
 
 OMPT_API_ROUTINE void *ompt_get_task_function(int depth)
@@ -500,6 +513,60 @@ OMPT_API_ROUTINE int ompt_get_ompt_version()
 
 
 /*****************************************************************************
+ * target interface
+ ****************************************************************************/
+
+void
+ompt_set_frame_reenter
+(
+  void *addr
+)
+{
+   ompt_frame_t *frame = ompt_get_task_frame(0);
+   frame->reenter_runtime_frame = addr;
+}
+
+void
+ompt_target_callback
+(
+  int32_t device_id, 
+  uint64_t target_region_id, 
+  ompt_scope_endpoint_t beg_end
+)
+{
+#if 1
+  fprintf(stderr, "in libomp target callback wrapper\n");
+#endif
+  if (ompt_enabled && ompt_callbacks.ompt_callback(ompt_event_target)) {
+    ompt_task_id_t task_id = __ompt_get_task_id_internal(0);
+    ompt_callbacks.ompt_callback(ompt_event_target)
+      (device_id, ompt_task_target, task_id, beg_end, target_region_id); 
+  }
+}
+
+
+_OMP_EXTERN
+void 
+ompt_target_start_tool
+(
+  ompt_initialize_t libomptarget_init
+)
+{
+  // #if OMPT_DEBUG
+#if 1
+    fprintf(stderr, "called ompt_target_start_tool()\n");
+#endif
+  __ompt_force_initialization();
+
+  if (ompt_enabled && ompt_callbacks.ompt_callback(ompt_event_device_initialize)) {
+    if (libomptarget_init) {
+      fprintf(stderr, "called libomptarget_init(...) from libomp\n");
+      libomptarget_init(ompt_fn_lookup, ompt_get_runtime_version(), OMPT_VERSION);
+    }
+  }
+}
+
+/*****************************************************************************
  * application-facing API
  ****************************************************************************/
 
@@ -530,6 +597,7 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s)
     FOREACH_OMPT_INQUIRY_FN(ompt_interface_fn)
 
     FOREACH_OMPT_PLACEHOLDER_FN(ompt_interface_fn)
+
 
     return (ompt_interface_fn_t) 0;
 }

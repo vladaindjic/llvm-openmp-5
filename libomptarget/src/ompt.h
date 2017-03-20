@@ -1,5 +1,5 @@
 /*
- * include/45/ompt.h.var
+ * include/41/ompt.h.var
  */
 
 #ifndef __OMPT__

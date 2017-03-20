@@ -1,0 +1,74 @@
+--------------------------------------------------------------------------------
+
+  Function: ompt_target_start_trace
+
+  Type Signature:
+
+    bool ompt_target_start_trace
+    (
+      ompt_target_device_t *device, 
+      ompt_target_buffer_request_callback_t request, 
+      ompt_target_buffer_complete_callback_t complete, 
+      ompt_get_target_info_inquiry_t ompt_get_target_info
+    )
+
+  Description:
+
+    Register a buffer request callback and a buffer complete 
+    callback using cuptiActivityRegisterCallbacks.
+
+--------------------------------------------------------------------------------
+
+  Function: ompt_target_set_trace_native
+
+  Type Signature:
+
+    int ompt_target_set_trace_native
+    (
+      ompt_target_device_t *device, 
+      bool enable, uint32_t flags
+    )
+
+  Description:
+
+    Enable or disable collection of a specific kind of activity 
+    record for a context using cuptiActivityEnableContext or 
+    cuptiActivityDisableContext.
+
+--------------------------------------------------------------------------------
+
+  Function: ompt_target_get_time
+
+  Type Signature:
+
+    bool ompt_target_get_time
+    (
+      ompt_target_device_t *device, 
+      ompt_target_time_t *time
+    )
+
+  Description:
+
+    Return the current time on the specified device context using 
+    cuptiDeviceGetTimestamp.
+
+--------------------------------------------------------------------------------
+
+  Function: ompt_target_advance_buffer_cursor
+
+  Type Signature:
+
+    int ompt_target_advance_buffer_cursor
+    (
+      ompt_target_buffer_t *buffer, 
+      size_t validSize, 
+      ompt_target_buffer_cursor_t current, 
+      ompt_target_buffer_cursor_t *next
+    )
+
+  Description:
+
+    Return a cursor for the next record in the specified buffer 
+    given a cursor for the current record using cuptiActivityGetNextRecord.
+
+--------------------------------------------------------------------------------

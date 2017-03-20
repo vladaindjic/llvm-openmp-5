@@ -23,13 +23,257 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <atomic>
+
+#include <string.h>
+
+#include "ompt.h"
+
 
 // Header file global to this project
 #include "omptarget.h"
 
+
+//******************************************************************************
+// macros
+//******************************************************************************
+
 #define DP(...) DEBUGP("Libomptarget", __VA_ARGS__)
 #define INF_REF_CNT (LONG_MAX>>1) // leave room for additions/subtractions
 #define CONSIDERED_INF(x) (x > (INF_REF_CNT>>1))
+
+
+
+//******************************************************************************
+// debugging support
+//******************************************************************************
+
+int libomptarget_debug_wait_flag = 1;
+
+void
+libomptarget_debug_continue()
+{
+  libomptarget_debug_wait_flag = 0;
+}
+
+
+static void 
+libomptarget_debug_wait()
+{
+  if (getenv("LIBOMPTARGET_DEBUG_WAIT")) {
+    while (libomptarget_debug_wait_flag);
+  }
+}
+
+
+
+//******************************************************************************
+// OpenMP Tools API (OMPT) support
+//******************************************************************************
+
+
+//----------------------------------------
+// macros
+//----------------------------------------
+#define OMPT_CALLBACK(fn, args) if (ompt_enabled && fn) fn args
+
+// FIXME: update to __builtin_frame_address(1) to comply with OpenMP 5.0 spec
+//        when LLVM OpenMP and HPCToolkit are updated
+#define OMPT_TARGET_REGION_BEGIN() \
+  OMPT_CALLBACK(ompt_set_frame_reenter,(__builtin_frame_address(0)))
+
+#define OMPT_TARGET_REGION_END()   \
+  OMPT_CALLBACK(ompt_set_frame_reenter,(0))
+
+//----------------------------------------
+// types
+//----------------------------------------
+
+typedef void (*target_callback_t)
+(
+ int32_t device_id, 
+ uint64_t target_region_id, 
+ int beg_end
+);
+
+
+typedef void (*ompt_set_frame_reenter_t)
+(
+ void *addr
+);
+
+
+
+//----------------------------------------
+// global data
+//----------------------------------------
+
+static bool ompt_enabled = false;
+
+static target_callback_t ompt_target_callback = 0;
+ompt_set_frame_reenter_t ompt_set_frame_reenter;
+
+static std::atomic<uint64_t> ompt_target_region_id_ticket(1);
+static std::atomic<uint64_t> ompt_target_region_opid_ticket(1);
+
+static const char *ompt_version_string;
+static unsigned int ompt_version_number;
+
+
+//----------------------------------------
+// thread-private data
+//----------------------------------------
+
+thread_local uint64_t ompt_target_region_id;
+thread_local uint64_t ompt_target_region_opid;
+
+//----------------------------------------
+// OMPT private operations
+//----------------------------------------
+
+static uint64_t 
+ompt_target_region
+(
+ int begin_end
+)
+{
+  uint64_t retval;
+  if (begin_end == ompt_scope_begin) {
+    ompt_target_region_id = ompt_target_region_id_ticket.fetch_add(1);
+    retval = ompt_target_region_id;
+  } else {
+    retval = ompt_target_region_id;
+    ompt_target_region_id = 0;
+  }
+  DP("in ompt_target_region (retval = %lu)\n", retval);
+  return retval;
+}
+
+
+static void
+ompt_target_operation_begin()
+{
+  ompt_target_region_opid = ompt_target_region_opid_ticket.fetch_add(1);
+  DP("in ompt_target_region_begin (ompt_target_region_opid = %lu)\n", 
+     ompt_target_region_opid);
+}
+
+
+static void
+ompt_target_operation_end()
+{
+  ompt_target_region_opid = 0;
+  DP("in ompt_target_region_end (ompt_target_region_opid = %lu)\n", 
+     ompt_target_region_opid);
+}
+
+
+static uint64_t
+ompt_target_operation_id()
+{
+  return ompt_target_region_opid;
+}
+
+
+__attribute__ (( weak ))
+void
+ompt_target_start_tool
+(
+ ompt_initialize_t initializer
+)
+{
+  // no initialization of OMPT for libomptarget unless 
+  // libomp implements this function
+  DP("in libomptarget start tool\n");
+}
+
+
+static void
+ompt_libomptarget_init
+(
+ ompt_function_lookup_t lookup, 
+ const char *version_string,
+ unsigned int version_number
+)
+{
+  DP("in ompt_libomptarget_init!\n");
+
+  ompt_enabled = true;
+  ompt_target_callback = (target_callback_t) lookup("ompt_target_callback");
+  DP("in ompt_libomptarget_init (ompt_target_callback = %p)\n", 
+     (void *) ompt_target_callback);
+ 
+  ompt_version_string = version_string;
+  ompt_version_number = version_number;
+}
+
+typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
+
+static void
+ompt_init()
+{
+  static bool initialized = false;
+
+  if (initialized == false) {
+    DP("in ompt_init\n");
+    ompt_target_start_tool_t ompt_target_start_tool_fn = 
+      (ompt_target_start_tool_t) dlsym(NULL, "ompt_target_start_tool");
+    ompt_target_start_tool_fn(ompt_libomptarget_init);
+    initialized = true;
+  }
+}
+
+
+static void
+ompt_get_target_info
+(
+  ompt_target_id_t *target_region_id, 
+  ompt_target_id_t *target_region_opid
+)
+{
+  *target_region_id  = ompt_target_region_id;
+  *target_region_opid = ompt_target_region_opid;
+}
+
+
+static ompt_interface_fn_t 
+rtl_fn_lookup
+(
+ const char *fname
+)
+{
+  if (strcmp(fname, "ompt_get_target_info") == 0) 
+    return (ompt_interface_fn_t) ompt_get_target_info;
+
+  return 0;
+}
+
+
+//----------------------------------------
+// OMPT interface operations
+//----------------------------------------
+
+extern "C" {
+
+void
+libomptarget_start_tool
+(
+ ompt_initialize_t target_rtl_init
+)
+{
+  DP("in libomptarget_start_tool\n");
+  if (ompt_enabled) {
+    DP("calling target_rtl_init \n");
+    target_rtl_init(rtl_fn_lookup, ompt_version_string, ompt_version_number);
+  }
+}
+
+}
+
+
+
+//******************************************************************************
+//******************************************************************************
 
 // List of all plugins that can support offloading.
 static const char *RTLNames[] = {
@@ -175,7 +419,7 @@ private:
 struct RTLInfoTy {
   typedef int32_t(is_valid_binary_ty)(void *);
   typedef int32_t(number_of_devices_ty)();
-  typedef int32_t(init_device_ty)(int32_t);
+  typedef int32_t(init_device_ty)(int32_t, int32_t);
   typedef __tgt_target_table *(load_binary_ty)(int32_t, void *);
   typedef void *(data_alloc_ty)(int32_t, int64_t);
   typedef int32_t(data_submit_ty)(int32_t, void *, void *, int64_t);
@@ -279,6 +523,10 @@ public:
 };
 
 void RTLsTy::LoadRTLs() {
+
+  // wait for debugger if desired
+  libomptarget_debug_wait();
+
   // Parse environment variable OMP_TARGET_OFFLOAD (if set)
   char *envStr = getenv("OMP_TARGET_OFFLOAD");
   if (envStr) {
@@ -287,6 +535,9 @@ void RTLsTy::LoadRTLs() {
       return;
     }
   }
+
+  // initialize the OMPT tools interface
+  ompt_init();
 
   DP("Loading RTLs...\n");
 
@@ -940,7 +1191,9 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, long Size, long ForceDelete) {
 
 // Init device, should not be called directly.
 void DeviceTy::init() {
-  int32_t rc = RTL->init_device(RTLDeviceID);
+  ompt_target_operation_begin();
+  int32_t rc = RTL->init_device(RTLDeviceID, DeviceID);
+  ompt_target_operation_end();
   if (rc == OFFLOAD_SUCCESS) {
     IsInit = true;
   }
@@ -964,37 +1217,55 @@ int32_t DeviceTy::initOnce() {
 
 // Load binary to device.
 __tgt_target_table *DeviceTy::load_binary(void *Img) {
+  ompt_target_operation_begin();
   RTL->Mtx.lock();
   __tgt_target_table *rc = RTL->load_binary(RTLDeviceID, Img);
   RTL->Mtx.unlock();
+  ompt_target_operation_end();
   return rc;
 }
 
 // Submit data to device.
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
-  return RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
+  ompt_target_operation_begin();
+  int32_t result = RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
+  ompt_target_operation_end();
+  return result;
 }
 
 // Retrieve data from device.
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
-  return RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
+  ompt_target_operation_begin();
+  int32_t result = RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
+  ompt_target_operation_end();
+  return result;
 }
 
 // Run region on device
 int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize) {
-  return RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize);
+  ompt_target_operation_begin();
+  int32_t result = RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize);
+  ompt_target_operation_end();
+  return result;
 }
 
 // Run team region on device.
 int32_t DeviceTy::run_team_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize, int32_t NumTeams, int32_t ThreadLimit,
     uint64_t LoopTripCount) {
-  return RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize,
+  ompt_target_operation_begin();
+  int32_t result = RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize,
       NumTeams, ThreadLimit, LoopTripCount);
+  ompt_target_operation_end();
+  return result;
 }
+
+
+
+//***************************************************************
 
 ////////////////////////////////////////////////////////////////////////////////
 // Functionality for registering libs
@@ -1746,6 +2017,8 @@ EXTERN void __tgt_target_data_begin(int32_t device_id, int32_t arg_num,
 
   DeviceTy& Device = Devices[device_id];
 
+  OMPT_TARGET_REGION_BEGIN();
+
   // Translate maps
   int32_t new_arg_num;
   void **new_args_base;
@@ -1762,6 +2035,8 @@ EXTERN void __tgt_target_data_begin(int32_t device_id, int32_t arg_num,
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
       new_arg_types, arg_num, args_base);
+
+  OMPT_TARGET_REGION_END();
 }
 
 /// Internal function to undo the mapping and retrieve the data from the device.
@@ -1896,6 +2171,8 @@ EXTERN void __tgt_target_data_end(int32_t device_id, int32_t arg_num,
     return;
   }
 
+  OMPT_TARGET_REGION_BEGIN();
+
   // Translate maps
   int32_t new_arg_num;
   void **new_args_base;
@@ -1912,6 +2189,8 @@ EXTERN void __tgt_target_data_end(int32_t device_id, int32_t arg_num,
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
       new_arg_types, arg_num, args_base);
+
+  OMPT_TARGET_REGION_END();
 }
 
 EXTERN void __tgt_target_data_end_nowait(int32_t device_id, int32_t arg_num,
@@ -1941,6 +2220,8 @@ EXTERN void __tgt_target_data_update(int32_t device_id, int32_t arg_num,
   }
 
   DeviceTy& Device = Devices[device_id];
+
+  OMPT_TARGET_REGION_BEGIN();
 
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
@@ -2001,6 +2282,8 @@ EXTERN void __tgt_target_data_update(int32_t device_id, int32_t arg_num,
       Device.ShadowMtx.unlock();
     }
   }
+
+  OMPT_TARGET_REGION_END();
 }
 
 EXTERN void __tgt_target_data_update_nowait(
@@ -2024,6 +2307,11 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
     int32_t team_num, int32_t thread_limit, int IsTeamConstruct) {
   DeviceTy &Device = Devices[device_id];
+
+  OMPT_CALLBACK(ompt_target_callback, 
+		(device_id, ompt_target_region_id, ompt_scope_begin)); 
+
+   // got a new constructor/destructor?
 
   // Find the table information in the map or look it up in the translation
   // tables.
@@ -2216,6 +2504,8 @@ EXTERN int __tgt_target(int32_t device_id, void *host_ptr, int32_t arg_num,
     return OFFLOAD_FAIL;
   }
 
+  OMPT_TARGET_REGION_BEGIN();
+
   // Translate maps
   int32_t new_arg_num;
   void **new_args_base;
@@ -2233,6 +2523,8 @@ EXTERN int __tgt_target(int32_t device_id, void *host_ptr, int32_t arg_num,
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
       new_arg_types, arg_num, args_base);
+
+  OMPT_TARGET_REGION_END();
 
   return rc;
 }
@@ -2270,6 +2562,8 @@ EXTERN int __tgt_target_teams(int32_t device_id, void *host_ptr,
     return OFFLOAD_FAIL;
   }
 
+  OMPT_TARGET_REGION_BEGIN();
+
   // Translate maps
   int32_t new_arg_num;
   void **new_args_base;
@@ -2288,6 +2582,8 @@ EXTERN int __tgt_target_teams(int32_t device_id, void *host_ptr,
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
       new_arg_types, arg_num, args_base);
+
+  OMPT_TARGET_REGION_END();
 
   return rc;
 }

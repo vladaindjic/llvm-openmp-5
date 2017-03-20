@@ -24,8 +24,18 @@ if(LIBOMPTARGET_DEP_LIBELF_FOUND)
       endif()
       
       include_directories(${LIBOMPTARGET_DEP_CUDA_INCLUDE_DIRS})
+      include_directories(${CUDA_TOOLKIT_ROOT_DIR}/extras/CUPTI/include)
+
+      include_directories(${LIBOMPTARGET_DEP_LIBELF_INCLUDE_DIRS})
+
+      set(CUDA_SRCFILES
+        src/cuda.cpp
+        src/cupti.cpp
+        src/ompt-cupti.cpp
+        src/rtl.cpp
+      )
     
-      add_library(omptarget.rtl.cuda SHARED src/rtl.cpp)
+      add_library(omptarget.rtl.cuda SHARED ${CUDA_SRCFILES})
       
       # Install plugin under the lib destination folder.
       install(TARGETS omptarget.rtl.cuda LIBRARY DESTINATION "lib")
@@ -33,6 +43,7 @@ if(LIBOMPTARGET_DEP_LIBELF_FOUND)
       target_link_libraries(omptarget.rtl.cuda 
         ${LIBOMPTARGET_DEP_CUDA_LIBRARIES} 
         cuda 
+        ${CUDA_TOOLKIT_ROOT_DIR}/extras/CUPTI/lib64/libcupti.so
         ${LIBOMPTARGET_DEP_LIBELF_LIBRARIES}
         "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/../exports")
     

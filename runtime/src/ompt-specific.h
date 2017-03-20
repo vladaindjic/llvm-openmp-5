@@ -15,6 +15,8 @@ typedef kmp_info_t ompt_thread_t;
  * forward declarations
  ****************************************************************************/
 
+void __ompt_force_initialization();
+
 void __ompt_team_assign_id(kmp_team_t *team, ompt_parallel_id_t ompt_pid);
 void __ompt_thread_assign_wait_id(void *variable);
 

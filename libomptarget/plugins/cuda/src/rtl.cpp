@@ -22,6 +22,8 @@
 
 #include "omptarget.h"
 
+#include "ompt-cupti.hpp"
+
 #ifndef TARGET_NAME
 #define TARGET_NAME Generic - 64bit
 #endif
@@ -211,6 +213,8 @@ public:
     } else {
       EnvNumTeams = -1;
     }
+
+    ompt_init(NumberOfDevices);
   }
 
   ~RTLDeviceInfoTy() {
@@ -292,7 +296,7 @@ int32_t __tgt_rtl_is_valid_binary(__tgt_device_image *image) {
 
 int32_t __tgt_rtl_number_of_devices() { return DeviceInfo.NumberOfDevices; }
 
-int32_t __tgt_rtl_init_device(int32_t device_id) {
+int32_t __tgt_rtl_init_device(int32_t device_id, int32_t omp_device_id) {
 
   CUdevice cuDevice;
   DP("Getting device %d\n", device_id);
