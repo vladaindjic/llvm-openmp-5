@@ -16,6 +16,7 @@
  ****************************************************************************/
 
 #include "ompt-specific.cpp"
+#include "ompt-general.h"
 
 
 /*****************************************************************************
@@ -203,9 +204,8 @@ void ompt_pre_init()
     else if (OMPT_STR_MATCH(ompt_env_var, "enabled"))
         tool_setting = omp_tool_enabled;
 
-#if OMPT_DEBUG
-    printf("ompt_pre_init(): tool_setting = %d\n", tool_setting);
-#endif
+    DP("ompt_pre_init(): tool_setting = %d\n", tool_setting);
+
     switch(tool_setting) {
     case omp_tool_disabled:
         break;
@@ -219,15 +219,14 @@ void ompt_pre_init()
         break;
 
     case omp_tool_error:
-        fprintf(stderr,
+      fprintf(stderr,
             "Warning: OMP_TOOL has invalid value \"%s\".\n"
             "  legal values are (NULL,\"\",\"disabled\","
             "\"enabled\").\n", ompt_env_var);
         break;
     }
-#if OMPT_DEBUG
-    printf("ompt_pre_init(): ompt_enabled = %d\n", ompt_enabled);
-#endif
+
+    DP("ompt_pre_init(): ompt_enabled = %d\n", ompt_enabled);
 }
 
 
@@ -318,16 +317,16 @@ OMPT_API_ROUTINE ompt_frame_t *ompt_get_task_frame(int depth)
 
 OMPT_API_ROUTINE int ompt_set_callback(ompt_event_t evid, ompt_callback_t cb)
 {
-    switch (evid) {
+  switch (evid) {
 
-#define ompt_event_macro(event_name, callback_type, event_id)                  \
-    case event_name:                                                           \
-        if (ompt_event_implementation_status(event_name)) {                    \
-            ompt_callbacks.ompt_callback(event_name) = (callback_type) cb;     \
-	    printf("In OMPT_SET_CALLBACK\n");			       \
-	    printf("The current evid: %d\n", evid);					       \
-        }                                                                      \
-        return ompt_event_implementation_status(event_name);
+#define ompt_event_macro(event_name, callback_type, event_id)		\
+    case event_name:							\
+      if (ompt_event_implementation_status(event_name)) {		\
+	ompt_callbacks.ompt_callback(event_name) = (callback_type) cb;	\
+	printf("In OMPT_SET_CALLBACK\n");				\
+	printf("The current evid: %d\n", evid);				\
+      }									\
+      return ompt_event_implementation_status(event_name);
 
     FOREACH_OMPT_EVENT(ompt_event_macro)
 
@@ -516,8 +515,10 @@ OMPT_API_ROUTINE int ompt_get_ompt_version()
  * target interface
  ****************************************************************************/
 
-void
-ompt_set_frame_reenter
+#include "../../libomptarget/src/omptarget-ompt.h"
+
+static void
+libomp_set_frame_reenter
 (
   void *addr
 )
@@ -526,24 +527,66 @@ ompt_set_frame_reenter
    frame->reenter_runtime_frame = addr;
 }
 
-void
-ompt_target_callback
+
+static void
+libomp_callback_target
 (
   int32_t device_id, 
   uint64_t target_region_id, 
   ompt_scope_endpoint_t beg_end
 )
 {
-#if 1
-  fprintf(stderr, "in libomp target callback wrapper\n");
-#endif
+  DP("enter libomp_event_target\n");
   if (ompt_enabled && ompt_callbacks.ompt_callback(ompt_event_target)) {
     ompt_task_id_t task_id = __ompt_get_task_id_internal(0);
+
+    // FIXME!
+    void *codeptr_ra = 0;
+    ompt_data_t task_data_dummy = ompt_data_none;
+    ompt_data_t *task_data = &task_data_dummy;
+
     ompt_callbacks.ompt_callback(ompt_event_target)
-      (device_id, ompt_task_target, task_id, beg_end, target_region_id); 
+      (ompt_task_target, beg_end, device_id, task_data, target_region_id, codeptr_ra); 
   }
+  DP("leave libomp_event_target\n");
 }
 
+
+static void
+libomp_callback_device_initialize
+(
+  uint64_t device_num, 
+  const char *type, 
+  ompt_device_t *device,
+  ompt_function_lookup_t lookup,
+  const char *documentation
+)
+{
+  DP("enter libomp_event_device_initialize\n");
+
+  assert(ompt_enabled && 
+	 ompt_callbacks.ompt_callback(ompt_event_device_initialize));
+
+  ompt_callbacks. ompt_callback(ompt_event_device_initialize)
+    (device_num, type, device, lookup, documentation);
+
+  DP("leave libomp_event_device_initialize\n");
+}
+
+
+static ompt_interface_fn_t 
+libomp_target_fn_lookup(const char *s)
+{
+
+#define ompt_interface_fn(fn) \
+    if (strcmp(s, #fn) == 0) return (ompt_interface_fn_t) fn;
+
+    FOREACH_OMPT_TARGET_FN(ompt_interface_fn)
+
+#undef ompt_interface_fn
+
+    return (ompt_interface_fn_t) 0;
+}
 
 _OMP_EXTERN
 void 
@@ -552,19 +595,21 @@ ompt_target_start_tool
   ompt_initialize_t libomptarget_init
 )
 {
-  // #if OMPT_DEBUG
-#if 1
-    fprintf(stderr, "called ompt_target_start_tool()\n");
-#endif
+  DP("enter ompt_target_start_tool\n");
   __ompt_force_initialization();
 
-  if (ompt_enabled && ompt_callbacks.ompt_callback(ompt_event_device_initialize)) {
+  if (ompt_enabled && 
+      ompt_callbacks.ompt_callback(ompt_event_device_initialize)) {
     if (libomptarget_init) {
-      fprintf(stderr, "called libomptarget_init(...) from libomp\n");
-      libomptarget_init(ompt_fn_lookup, ompt_get_runtime_version(), OMPT_VERSION);
+      DP("calling libomptarget_init(...)\n");
+      libomptarget_init(libomp_target_fn_lookup, 
+			ompt_get_runtime_version(), 
+			OMPT_VERSION);
     }
   }
 }
+
+
 
 /*****************************************************************************
  * application-facing API
@@ -597,6 +642,8 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s)
     FOREACH_OMPT_INQUIRY_FN(ompt_interface_fn)
 
     FOREACH_OMPT_PLACEHOLDER_FN(ompt_interface_fn)
+
+#undef ompt_interface_fn
 
 
     return (ompt_interface_fn_t) 0;

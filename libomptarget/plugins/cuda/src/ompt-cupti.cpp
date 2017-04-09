@@ -17,6 +17,7 @@
 // global includes 
 //******************************************************************************
 
+#include <cassert>
 #include <map>
 #include <vector>
 
@@ -29,6 +30,10 @@
 //******************************************************************************
 // local includes 
 //******************************************************************************
+
+#include "omptarget.h"
+
+#include "rtl.h"
 
 #include "cupti.hpp"
 #include "cuda.hpp"
@@ -46,8 +51,8 @@
 
 #define COPY_TIMES(dest, src)			\
   {						\
-    dest->start_time = src->start_time;		\
-    dest->end_time = src->end_time;		\
+    dest->start_time = src->start;		\
+    dest->end_time = src->end;			\
   }
 
 
@@ -69,22 +74,17 @@
   macro(ompt_native_overhead, overhead_activities)
 
 #define FOREACH_TARGET_FN(macro) 		\
-  macro(ompt_target_start_trace)		\
-  macro(ompt_target_set_trace_native) 		\
-  macro(ompt_target_get_time)			\
-  macro(ompt_target_advance_buffer_cursor)	\
-  macro(ompt_target_buffer_get_record_native)   \
-  macro(ompt_target_buffer_get_record_type)	\
-  macro(ompt_target_buffer_get_record_native_abstract)
+  macro(ompt_get_device_time)			\
+  macro(ompt_translate_time)			\
+  macro(ompt_set_trace_native)			\
+  macro(ompt_start_trace)			\
+  macro(ompt_pause_trace)			\
+  macro(ompt_stop_trace)			\
+  macro(ompt_advance_buffer_cursor)		\
+  macro(ompt_get_record_type)			\
+  macro(ompt_get_record_native)			\
+  macro(ompt_get_record_abstract)
 
-#define FOREACH_MISSING_TARGET_FN(macro) 		\
-  macro(ompt_target_start_trace)			\
-  macro(ompt_target_set_trace_native)			\
-  macro(ompt_target_get_time)				\
-  macro(ompt_target_advance_buffer_cursor)		\
-  macro(ompt_target_buffer_get_record_native)		\
-  macro(ompt_target_buffer_get_record_type)		\
-  macro(ompt_target_buffer_get_record_native_abstract)
 
 //******************************************************************************
 // types
@@ -92,20 +92,20 @@
 
 class ompt_device_info_t {
 public:
-  int device_id;
+  int initialized;
+  int relative_id;
   int global_id;
-  int id;
-  ompt_get_target_info_inquiry_t get_target_info;
-  ompt_target_buffer_request_callback_t request_callback;
-  ompt_target_buffer_complete_callback_t complete_callback;
+  CUcontext context;
+  ompt_callback_buffer_request_t request_callback;
+  ompt_callback_buffer_complete_t complete_callback;
   ompt_device_info_t() : 
-    device_id(0), global_id(0), id(0), get_target_info(0), 
-    request_callback(0), complete_callback(0) 
+    initialized(0), relative_id(0), global_id(0), context(0), 
+    request_callback(0), complete_callback(0)
   {
   };
 }; 
 
-typedef ompt_target_id_t (*ompt_target_operation_id_t)();
+typedef ompt_target_id_t (*libomptarget_get_target_info_t)();
 
 typedef CUptiResult (*cupti_enable_disable_fn)
 (
@@ -123,7 +123,7 @@ typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
 // constants
 //******************************************************************************
 
-static const char ompt_documentation[] =
+static const char *ompt_documentation =
   #include "ompt-documentation.h"
   ;
 
@@ -142,30 +142,25 @@ static bool ompt_enabled = false;
 static const char *ompt_version_string = 0;
 static int ompt_version_number = 0;
 
-static ompt_target_operation_id_t        ompt_target_operation_id;
-static ompt_device_initialize_callback_t ompt_target_device_initialize;
+static libomptarget_get_target_info_t        libomptarget_get_target_info;
+static ompt_callback_device_initialize_t libomp_callback_device_initialize;
 
 static std::vector<ompt_device_info_t> device_info;
 
-// temporary definitions of missing target entry points 
-#define macro(fn)				\
-  static ompt_interface_fn_t fn;
-
-FOREACH_MISSING_TARGET_FN(macro); 
-#undef macro
-
   
+
 //----------------------------------------
 // thread local data
 //----------------------------------------
 
-#if 0
-thread_local ompt_native_abstract_t ompt_native_abstract;
-#endif
-
+thread_local ompt_record_abstract_t ompt_record_abstract;
 thread_local ompt_target_id_t ompt_correlation_id;
 
 
+
+//******************************************************************************
+// private operations
+//******************************************************************************
 
 
 // device needs
@@ -209,37 +204,6 @@ ompt_device_get_type
 }
 
 
-static ompt_interface_fn_t 
-ompt_device_lookup
-(
- const char *s
-)
-{
-#define macro(fn) \
-  if (strcmp(s, #fn) == 0) return (ompt_interface_fn_t) fn;
-
-  FOREACH_TARGET_FN(macro);
-
-#undef macro
-
-  return (ompt_interface_fn_t) 0;
-}
-
-extern "C" {
-
-__attribute__ (( weak ))
-void
-libomptarget_start_tool
-(
- ompt_initialize_t ompt_init
-)
-{
-  // no initialization of OMPT for device-specific rtl unless 
-  // libomptarget implements this function
-}
-
-}
-
 
 static void
 ompt_device_rtl_init
@@ -249,92 +213,72 @@ ompt_device_rtl_init
  unsigned int version_number
 )
 {
+  DP("enter ompt_device_rtl_init\n");
+
   ompt_enabled = true;
   ompt_version_string = version_string;
   ompt_version_number = version_number;
 
-  ompt_target_operation_id = 
-    (ompt_target_operation_id_t) lookup("ompt_target_operation_id");
+  libomptarget_get_target_info = 
+    (libomptarget_get_target_info_t) lookup("libomptarget_get_target_info");
 
-  ompt_target_device_initialize = 
-    (ompt_device_initialize_callback_t) lookup("ompt_target_device_initialize");
-}
+  DP("libomptarget_get_target_info = %p\n", libomptarget_get_target_info);
 
+  libomp_callback_device_initialize = 
+    (ompt_callback_device_initialize_t) lookup("libomp_callback_device_initialize");
 
-void
-ompt_device_rtl_init_device
-(
- int omp_device_id
-)
-{
-  int device_id = omp_device_id;
-
-  if (ompt_target_device_initialize) {
-    ompt_target_device_initialize
-      (omp_device_id,
-      ompt_device_get_type(device_id),
-      (ompt_target_device_t) 0, // fixme
-      ompt_device_lookup,
-      ompt_documentation);
-  }
+  DP("libomp_callback_device_initialize = %p\n", libomp_callback_device_initialize);
+  
+  DP("exit ompt_device_rtl_init\n");
 }
 
 
 static void 
-ompt_init_device_infos
+ompt_device_infos_alloc
 (
- int num_devices, 
- int first_global_id
+ int num_devices 
 )
 {
   device_info.resize(num_devices);
-  for (int i = 0; i < num_devices; i++) {
-    device_info[i].local_id = i;
-    device_info[i].global_id = first_global_id + i;
-  }
 }
 
 
-void
-ompt_init
+static bool 
+ompt_device_info_init
 (
- int num_devices
+ int device_id, 
+ int omp_device_id,
+ CUcontext context
 )
 {
-  static bool initialized;
-  if (initialized == false) {
-    ompt_target_start_tool_t libomptarget_start_tool_fn = 
-      (ompt_target_start_tool_t) dlsym(NULL, "libomptarget_start_tool");
-    if (libomptarget_start_tool_fn) {
-      libomptarget_start_tool_fn(ompt_device_rtl_init);
-    }
-    ompt_init_device_infos(num_devices);
-    initialized = true;
-  }
-}
+  bool valid_device = device_id < (int) device_info.size();
 
-#if 0
+  if (valid_device) {
+    device_info[device_id].relative_id = device_id;
+    device_info[device_id].global_id = omp_device_id;
+    device_info[device_id].context = context;
+    device_info[device_id].initialized = 1;
+  }
+
+  return valid_device;
+}
 
 //----------------------------------------
 // internal operations 
 //----------------------------------------
 
-#if 0
 static inline int
 ompt_get_device_id
 (
- ompt_target_device_t *device
+ ompt_device_t *device
 ) 
 {
-  if (device) {
-    int global_id = ((ompt_device_info_t *) device)->global_id;
-    int device_id = global_id - device_offset;
-    if (device_id >= 0 && device_id <= DeviceInfo.NumberOfDevices) 
-      return device_id;
-  }
-  return NO_DEVICE;
+  ompt_device_info_t *dptr = (ompt_device_info_t*) device;
+  return dptr ? dptr->relative_id : NO_DEVICE;
 }
 
+#if 0
+#if 0
 
 //Generate Request Functions
 #define MAKE_REQUEST_FN_NAME(i) cupti_buffer_request_ ## i
@@ -346,7 +290,7 @@ ompt_get_device_id
      size_t *maxNumRecords)						\
   {									\
     *maxNumRecords = 0;							\
-    DeviceInfo.ompt_info[i].request_callback(i, buffer, size);		\
+    device_info.ompt_info[i].request_callback(i, buffer, size);		\
   }
 
 //Generate Complete Functions
@@ -361,9 +305,9 @@ ompt_get_device_id
      size_t size,							\
      size_t validSize)							\
   {									\
-    ompt_target_buffer_cursor_t begin;					\
-    DeviceInfo.ompt_info[i].complete_callback				\
-      (i, (const ompt_target_buffer_t*)buffer, validSize, begin, true); \
+    ompt_buffer_cursor_t begin;					\
+    device_info.ompt_info[i].complete_callback				\
+      (i, (const ompt_buffer_t*)buffer, validSize, begin, true); \
   }
 
 MAKE_REQUEST_FN(0)
@@ -414,19 +358,20 @@ MAKE_COMPLETE_FN_NAME(8),
 MAKE_COMPLETE_FN_NAME(9),
 };
 #endif
+#endif 
 
 //----------------------------------------
 // OMPT buffer management support
 //----------------------------------------
 
-static ompt_native_abstract_t *
+static ompt_record_abstract_t *
 ompt_abstract_init()
 {
-  ompt_native_abstract_t *a = &ompt_native_abstract;
-  a->rclass = ompt_record_native_class_event;
+  ompt_record_abstract_t *a = &ompt_record_abstract;
+  a->rclass = ompt_record_native_event;
   a->hwid = ompt_hwid_none;
-  a->start_time = ompt_time_none;
-  a->end_time = ompt_time_none;
+  a->start_time = ompt_device_time_none;
+  a->end_time = ompt_device_time_none;
   return a;
 }
 
@@ -437,18 +382,18 @@ ompt_abstract_init()
 
 
 static int32_t
-ompt_target_advance_buffer_cursor
+ompt_advance_buffer_cursor
 (
- ompt_target_buffer_t *buffer,
- size_t validSize,
- ompt_target_buffer_cursor_t current,
- ompt_target_buffer_cursor_t *next
+ ompt_buffer_t *buffer,
+ size_t size,
+ ompt_buffer_cursor_t current,
+ ompt_buffer_cursor_t *next
 )
 {
   DECLARE_CAST(CUpti_Activity, cursor, current);
-  bool result = cupti_buffer_cursor_advance(buffer, validSize, &cursor);
+  bool result = cupti_buffer_cursor_advance(buffer, size, &cursor);
   if (result) {
-    *next = (ompt_target_buffer_cursor_t) cursor;
+    *next = (ompt_buffer_cursor_t) cursor;
   }
   return result;
 }
@@ -456,9 +401,9 @@ ompt_target_advance_buffer_cursor
 
 static ompt_record_type_t 
 ompt_get_record_type(
-  ompt_target_buffer_t *buffer,
+  ompt_buffer_t *buffer,
   size_t validSize,
-  ompt_target_buffer_cursor_t current
+  ompt_buffer_cursor_t current
 )
 {
   DECLARE_CAST(CUpti_Activity, activity, current);
@@ -467,40 +412,11 @@ ompt_get_record_type(
 }
 
 
-static int32_t
-ompt_target_advance_buffer_cursor
-(
- ompt_target_buffer_t *buffer,
- size_t validSize,
- ompt_target_buffer_cursor_t current,
- ompt_target_buffer_cursor_t *next
-)
-{
-  DECLARE_CAST(CUpti_Activity, cursor, current);
-  CUptiResult result = cuptiActivityGetNextRecord(buffer, validSize, &cursor);
-  *next = (ompt_target_buffer_cursor_t) cursor;
-  return (result != CUPTI_SUCCESS);
-}
-
-
-static ompt_record_type_t 
-ompt_get_record_type(
-  ompt_target_buffer_t *buffer,
-  size_t validSize,
-  ompt_target_buffer_cursor_t current
-)
-{
-  DECLARE_CAST(CUpti_Activity, activity, current);
-  CUptiResult status = cuptiActivityGetNextRecord(buffer, validSize, &activity);
-  return (status == CUPTI_SUCCESS) ? ompt_record_native : ompt_record_invalid;
-}
-
-
 static void*
 ompt_get_record_native
 (
- ompt_target_buffer_t *buffer,
- ompt_target_buffer_cursor_t current,
+ ompt_buffer_t *buffer,
+ ompt_buffer_cursor_t current,
  ompt_target_id_t *host_opid
 )
 {
@@ -514,18 +430,18 @@ ompt_get_record_native
 }
 
 
-static ompt_record_native_abstract_t * 
+static ompt_record_abstract_t * 
 ompt_get_record_abstract
 (
   CUpti_Activity *activity
 )
 {
-  ompt_record_native_abstract_t *a = ompt_abstract_init();
+  ompt_record_abstract_t *abs = ompt_abstract_init();
 
   switch (activity->kind) {
 
   case CUPTI_ACTIVITY_KIND_MEMCPY: {
-    DECLARE_CAST(CUpti_ActivityMemcpy, rhs, cursor);
+    DECLARE_CAST(CUpti_ActivityMemcpy, rhs, activity);
     abs->type = "MEMCPY EXPLICIT";
     COPY_TIMES(abs, rhs);
     break;
@@ -589,6 +505,9 @@ ompt_get_record_abstract
     break;
   }
 
+  default:
+    DP("CUPTI activity kind %d not handled by ompt-cupti.cpp\n", activity->kind);
+    break;
   }
   return abs;
 }
@@ -599,27 +518,24 @@ ompt_get_record_abstract
 //----------------------------------------
 
 
-static int32_t
+static int
 ompt_set_trace_native
 (
- ompt_target_device_t *device, 
- bool enable, 
- uint32_t flags 
+ ompt_device_t *device, 
+ int enable, 
+ int flags 
 ) 
 { 
-  int result = ;
-  int device_id = ompt_get_device_id(device);
-  if (device_id != NO_DEVICE) {
+  int relative_device_id = ompt_get_device_id(device);
+  if (relative_device_id != NO_DEVICE) {
     int result = 0;
     int status;
 
     const char *action_string = enable ? "enable" : "disable";
 
-#define set_trace(flag, activity)					\
+#define set_trace(flag, activities)					\
     if (flags & flag) {							\
       int action_result = cupti_set_monitoring(activities, enable);	\
-			   OMPT_TRACING_OK :				\
-			   OMPT_TRACING_FAILED);			\
       result |= action_result;						\
       flags ^= flag;							\
     } 
@@ -633,9 +549,8 @@ ompt_set_trace_native
     }
 
     if (result & OMPT_TRACING_OK) {
-      return ((result & OMPT_TRACING_FAILED) ?
-	      OMPT_TRACING_SOME :
-	      OMPT_TRACING_ALL);
+      return ((result & OMPT_TRACING_FAILED) ? 
+	      OMPT_TRACING_SOME : OMPT_TRACING_ALL);
     }
 
     if (result & OMPT_TRACING_FAILED) {
@@ -650,16 +565,17 @@ ompt_set_trace_native
 static bool
 ompt_pause_trace
 (
- ompt_target_device_t *device,
+ ompt_device_t *device,
  int begin_pause
 )
 {
   bool result = false;
-  int device_id = ompt_get_device_id(device);
+  int relative_device_id = ompt_get_device_id(device);
 
-  CUresult cu_result = cuCtxSetCurrent(DeviceInfo.Contexts[device_id]);
+  CUresult cu_result = cuda_context_set(device_info.Contexts[relative_device_id]);
   if (cu_result == CUDA_SUCCESS) {
     if (begin_pause) {
+      cupti_stop();
     } else {
       CUptiResult cupti_result =
 	cuptiActivityRegisterCallbacks(request_fns[device_id],
@@ -676,27 +592,28 @@ ompt_pause_trace
 static bool
 ompt_start_trace
 (
- ompt_target_device_t *device,
- ompt_target_buffer_request_callback_t request,
- ompt_target_buffer_complete_callback_t complete
+ ompt_device_t *device,
+ ompt_callback_buffer_request_t request,
+ ompt_callback_buffer_complete_t complete
 )
 {
-  DeviceInfo.ompt_info[device_id].request_callback = request;
-  DeviceInfo.ompt_info[device_id].complete_callback = complete;
+  int device_id = ompt_get_device_id(device);
+  device_info[device_id].request_callback = request;
+  device_info[device_id].complete_callback = complete;
 
-  return ompt_pause_trace(0);
+  return ompt_pause_trace(device, 0);
 }
 
 
 static bool
 ompt_stop_trace
 (
- ompt_target_device_t *device,
+ ompt_device_t *device,
 )
 {
-  ompt_pause_trace(1);
-  // FIXME: flush
+  ompt_pause_trace(device, 1);
 }
+
 
 
 //*************************************************************************
@@ -711,25 +628,26 @@ ompt_stop_trace
 //----------------------------------------
 
 
-static bool
+#define ompt_device(d) ((ompt_device_info_t *) d)
+
+static ompt_device_time_t 
 ompt_get_device_time
 (
- ompt_target_device_t *device, 
- ompt_target_time_t *time
+ ompt_device_t *device
 )
 {
-  int device_id = ompt_get_device_id(device);
-  CUcontext context = DeviceInfo.Contexts[device_id];
-
-  return cupti_device_get_timestamp(context, (uint64_t *) time);
+  CUcontext context = ompt_device(device)->context;
+  uint64_t time;
+  cupti_device_get_timestamp(context, &time);
+  return (ompt_device_time_t) time; 
 }
 
 
 static double
 ompt_translate_time
 (
- ompt_target_device_t *device, 
- ompt_target_time_t time
+ ompt_device_t *device, 
+ ompt_device_time_t time
 )
 {
   double omp_time;
@@ -740,4 +658,92 @@ ompt_translate_time
   return omp_time;
 }
 
-#endif
+
+//******************************************************************************
+// interface operations
+//******************************************************************************
+
+extern "C" {
+
+__attribute__ (( weak ))
+void
+libomptarget_start_tool
+(
+ ompt_initialize_t ompt_init
+)
+{
+  // no initialization of OMPT for device-specific rtl unless 
+  // libomptarget implements this function
+}
+
+}
+
+
+void
+ompt_init
+(
+ int num_devices
+)
+{
+  static bool initialized;
+
+  DP("enter ompt_init\n");
+
+  if (initialized == false) {
+    ompt_target_start_tool_t libomptarget_start_tool_fn = 
+      (ompt_target_start_tool_t) dlsym(NULL, "libomptarget_start_tool");
+    if (libomptarget_start_tool_fn) {
+      libomptarget_start_tool_fn(ompt_device_rtl_init);
+    }
+    ompt_device_infos_alloc(num_devices);
+    initialized = true;
+  }
+
+  DP("exit ompt_init\n");
+}
+
+
+static ompt_interface_fn_t 
+ompt_device_lookup
+(
+ const char *s
+)
+{
+#define macro(fn) \
+  if (strcmp(s, #fn) == 0) return (ompt_interface_fn_t) fn;
+
+  FOREACH_TARGET_FN(macro);
+
+#undef macro
+
+  return (ompt_interface_fn_t) 0;
+}
+
+
+void
+ompt_device_init
+(
+ int device_id, 
+ int omp_device_id,
+ CUcontext context 
+)
+{
+  DP("enter ompt_device_init\n");
+
+  DP("libomp_callback_device_initialize = %p\n", libomp_callback_device_initialize);
+  if (libomp_callback_device_initialize) {
+    if (ompt_device_info_init(device_id, omp_device_id, context)) {
+
+      DP("calling libomp_callback_device_initialize\n");
+
+      libomp_callback_device_initialize
+        (omp_device_id,
+         ompt_device_get_type(omp_device_id),
+         (ompt_device_t *) &device_info[device_id], 
+         ompt_device_lookup,
+         ompt_documentation);
+    }
+  }
+
+  DP("exit ompt_device_init\n");
+}

@@ -23,13 +23,7 @@
 
 #include "ompt-cupti.hpp"
 
-#ifndef TARGET_NAME
-#define TARGET_NAME CUDA
-#endif
-
-#define GETNAME2(name) #name
-#define GETNAME(name) GETNAME2(name)
-#define DP(...) DEBUGP("Target " GETNAME(TARGET_NAME) " RTL", __VA_ARGS__)
+#include "rtl.h"
 
 #include "../../common/elf_common.c"
 
@@ -342,6 +336,8 @@ int32_t __tgt_rtl_init_device(int32_t device_id, int32_t omp_device_id) {
     DP("Default number of threads exceeds device limit, capping at %d\n",
         DeviceInfo.ThreadsPerBlock[device_id]);
   }
+
+  ompt_device_init(device_id, omp_device_id, DeviceInfo.Contexts[device_id]);
 
   return OFFLOAD_SUCCESS;
 }

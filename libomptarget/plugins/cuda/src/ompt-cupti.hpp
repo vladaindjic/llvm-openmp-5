@@ -14,7 +14,19 @@
 #ifndef __OMPT_CUPTI__
 #define __OMPT_CUPTI__
 
+#include <cuda.h>
+
 extern void
-ompt_init(int num_devices);
+ompt_init(
+  int num_devices
+);
+
+extern void
+ompt_device_init
+(
+ int device_id, 
+ int omp_device_id,
+ CUcontext context
+ );
 
 #endif

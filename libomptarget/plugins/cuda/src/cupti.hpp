@@ -179,12 +179,22 @@ cupti_pause_trace
  int begin_pause
 );
 
+
 extern cupti_set_status_t 
 cupti_set_monitoring
 (
  const  CUpti_ActivityKind activity_kinds[],
  bool enable
 );
+
+
+extern bool
+cupti_device_get_timestamp
+(
+ CUcontext context,
+ uint64_t *time
+);
+
 
 //===----------------------------------------------------------------------===//
 #endif // __CUPTI_HPP__

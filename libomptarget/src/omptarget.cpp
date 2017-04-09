@@ -27,12 +27,12 @@
 
 #include <string.h>
 
-#include "ompt.h"
-
 
 // Header file global to this project
 #include "omptarget.h"
 
+// Header file for OMPT interface support shared libomp
+#include "omptarget-ompt.h"
 
 //******************************************************************************
 // macros
@@ -47,6 +47,7 @@
 //******************************************************************************
 // debugging support
 //******************************************************************************
+extern "C" {
 
 int libomptarget_debug_wait_flag = 1;
 
@@ -65,6 +66,8 @@ libomptarget_debug_wait()
   }
 }
 
+}
+
 
 
 //******************************************************************************
@@ -80,29 +83,10 @@ libomptarget_debug_wait()
 // FIXME: update to __builtin_frame_address(1) to comply with OpenMP 5.0 spec
 //        when LLVM OpenMP and HPCToolkit are updated
 #define OMPT_TARGET_REGION_BEGIN() \
-  OMPT_CALLBACK(ompt_set_frame_reenter,(__builtin_frame_address(0)))
+  OMPT_CALLBACK(libomp_set_frame_reenter,(__builtin_frame_address(0)))
 
 #define OMPT_TARGET_REGION_END()   \
-  OMPT_CALLBACK(ompt_set_frame_reenter,(0))
-
-//----------------------------------------
-// types
-//----------------------------------------
-
-typedef void (*target_callback_t)
-(
- int32_t device_id, 
- uint64_t target_region_id, 
- int beg_end
-);
-
-
-typedef void (*ompt_set_frame_reenter_t)
-(
- void *addr
-);
-
-
+  OMPT_CALLBACK(libomp_set_frame_reenter,(0))
 
 //----------------------------------------
 // global data
@@ -110,14 +94,20 @@ typedef void (*ompt_set_frame_reenter_t)
 
 static bool ompt_enabled = false;
 
-static target_callback_t ompt_target_callback = 0;
-ompt_set_frame_reenter_t ompt_set_frame_reenter;
+
+#define libomp_name_decl(fn) \
+  static fn ## _t fn = 0;
+
+  FOREACH_OMPT_TARGET_FN(libomp_name_decl)
+
+#undef libomp_name_decl
+
 
 static std::atomic<uint64_t> ompt_target_region_id_ticket(1);
 static std::atomic<uint64_t> ompt_target_region_opid_ticket(1);
 
-static const char *ompt_version_string;
-static unsigned int ompt_version_number;
+static const char *libomp_version_string;
+static unsigned int libomp_version_number;
 
 
 //----------------------------------------
@@ -196,15 +186,21 @@ ompt_libomptarget_init
  unsigned int version_number
 )
 {
-  DP("in ompt_libomptarget_init!\n");
+  DP("enter ompt_libomptarget_init!\n");
 
   ompt_enabled = true;
-  ompt_target_callback = (target_callback_t) lookup("ompt_target_callback");
-  DP("in ompt_libomptarget_init (ompt_target_callback = %p)\n", 
-     (void *) ompt_target_callback);
- 
-  ompt_version_string = version_string;
-  ompt_version_number = version_number;
+
+#define ompt_bind_name(fn) \
+  fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fn);
+
+  FOREACH_OMPT_TARGET_FN(ompt_bind_name)
+
+#undef ompt_bind_name
+
+  libomp_version_string = version_string;
+  libomp_version_number = version_number;
+
+  DP("exit ompt_libomptarget_init!\n");
 }
 
 typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
@@ -225,7 +221,7 @@ ompt_init()
 
 
 static void
-ompt_get_target_info
+libomptarget_get_target_info
 (
   ompt_target_id_t *target_region_id, 
   ompt_target_id_t *target_region_opid
@@ -242,8 +238,11 @@ rtl_fn_lookup
  const char *fname
 )
 {
-  if (strcmp(fname, "ompt_get_target_info") == 0) 
-    return (ompt_interface_fn_t) ompt_get_target_info;
+  if (strcmp(fname, "libomptarget_get_target_info") == 0) 
+    return (ompt_interface_fn_t) libomptarget_get_target_info;
+
+  if (strcmp(fname, "libomp_callback_device_initialize") == 0) 
+    return (ompt_interface_fn_t) libomp_callback_device_initialize;
 
   return 0;
 }
@@ -264,7 +263,7 @@ libomptarget_start_tool
   DP("in libomptarget_start_tool\n");
   if (ompt_enabled) {
     DP("calling target_rtl_init \n");
-    target_rtl_init(rtl_fn_lookup, ompt_version_string, ompt_version_number);
+    target_rtl_init(rtl_fn_lookup, libomp_version_string, libomp_version_number);
   }
 }
 
@@ -2317,8 +2316,14 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     int32_t team_num, int32_t thread_limit, int IsTeamConstruct) {
   DeviceTy &Device = Devices[device_id];
 
-  OMPT_CALLBACK(ompt_target_callback, 
-		(device_id, ompt_target_region_id, ompt_scope_begin)); 
+  OMPT_CALLBACK(libomp_callback_target, 
+		(ompt_task_target, 
+		 ompt_scope_begin,
+		 device_id, 
+		 0,  // task data
+		 ompt_target_region_id, 
+		 0 // codeptr_ra
+		 )); 
 
    // got a new constructor/destructor?
 

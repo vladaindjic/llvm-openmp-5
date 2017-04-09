@@ -319,7 +319,7 @@ cupti_status_to_string
 
 
 bool
-cupti_device_get_time
+cupti_device_get_timestamp
 (
  CUcontext context,
  uint64_t *time
@@ -470,12 +470,12 @@ bool
 cupti_buffer_cursor_advance
 (
  uint8_t *buffer,
- size_t validSize,
+ size_t size,
  CUpti_Activity **activity
 )
 {
   bool status;
-  CUptiResult result = cuptiActivityGetNextRecord(buffer, validSize, activity);
+  CUptiResult result = cuptiActivityGetNextRecord(buffer, size, activity);
   return (result == CUPTI_SUCCESS);
 }
 
@@ -484,12 +484,12 @@ bool
 cupti_buffer_cursor_isvalid
 (
  uint8_t *buffer,
- size_t validSize,
+ size_t size,
  CUpti_Activity *activity
 )
 {
   CUpti_Activity *cursor = activity;
-  return cupti_buffer_cursor_advance(buffer, validSize, &cursor);
+  return cupti_buffer_cursor_advance(buffer, size, &cursor);
 }
 
 
@@ -774,6 +774,19 @@ cupti_correlation_disable()
 // interface  operations
 //******************************************************************************
 
+static ompt_record_type_t 
+ompt_get_record_type(
+  ompt_target_buffer_t *buffer,
+  size_t validSize,
+  ompt_target_buffer_cursor_t current
+)
+{
+  DECLARE_CAST(CUpti_Activity, activity, current);
+  CUptiResult status = cuptiActivityGetNextRecord(buffer, validSize, &activity);
+  return (status == CUPTI_SUCCESS) ? ompt_record_native : ompt_record_invalid;
+}
+
+
 void
 cupti_start()
 {
@@ -790,12 +803,18 @@ cupti_start()
 
 
 void
-cupti_stop()
+cupti_flush()
 {
-  cupti_correlation_disable();
   CUPTI_CALL(cuptiActivityFlushAll, (0));
 }
 
+
+void
+cupti_stop()
+{
+  cupti_correlation_disable();
+  cupti_flush();
+}
 
 
 //******************************************************************************
