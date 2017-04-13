@@ -162,13 +162,6 @@ cupti_correlation_callback_dummy
 );
 
 
-static void 
-cupti_error_callback_dummy
-(
- uint64_t *id
-);
-
-
 
 //******************************************************************************
 // constants
@@ -268,7 +261,7 @@ cupti_subscriber_callback
 )
 {
   if (domain == CUPTI_CB_DOMAIN_RESOURCE) {
-    CUpti_ResourceData *rd = (CUpti_ResourceData *) cb_info;
+    const CUpti_ResourceData *rd = (const CUpti_ResourceData *) cb_info;
     if (cb_id == CUPTI_CBID_RESOURCE_MODULE_LOADED) {
       CUpti_ModuleResourceData *mrd = (CUpti_ModuleResourceData *) rd->resourceDescriptor;
       printf("loaded module id %d, cubin size %ld, cubin %p\n", 
@@ -339,16 +332,16 @@ cupti_device_get_timestamp
 }
 
 static void 
-cupti_correlation_callback_dummy
+cupti_correlation_callback_dummy // __attribute__((unused))
 (
  uint64_t *id
 )
 {
-  id = 0;
+  *id = 0;
 }
 
 
-static void 
+void 
 cupti_buffer_alloc 
 (
  uint8_t **buffer, 
@@ -411,7 +404,7 @@ cupti_memcpy_kind_string
 }
 
 
-static const char *
+const char *
 cupti_stall_reason_string
 (
  CUpti_ActivityPCSamplingStallReason kind
@@ -476,7 +469,8 @@ cupti_buffer_cursor_advance
 {
   bool status;
   CUptiResult result = cuptiActivityGetNextRecord(buffer, size, activity);
-  return (result == CUPTI_SUCCESS);
+  status = (result == CUPTI_SUCCESS);
+  return status;
 }
 
 
@@ -573,7 +567,7 @@ CUpti_SubscriberHandle cupti_subscriber;
 //******************************************************************************
 
 static void
-cupti_error_callback_dummy
+cupti_error_callback_dummy // __attribute__((unused))
 (
  const char *type, 
  const char *fn, 
@@ -619,7 +613,6 @@ cupti_set_monitoring
 {
   int failed = 0;
   int succeeded = 0;
-  bool result = true;
   cupti_activity_enable_disable_t action =
     (enable ? cuptiActivityEnable : cuptiActivityDisable);	
   int i = 0;
@@ -773,19 +766,6 @@ cupti_correlation_disable()
 //******************************************************************************
 // interface  operations
 //******************************************************************************
-
-static ompt_record_type_t 
-ompt_get_record_type(
-  ompt_target_buffer_t *buffer,
-  size_t validSize,
-  ompt_target_buffer_cursor_t current
-)
-{
-  DECLARE_CAST(CUpti_Activity, activity, current);
-  CUptiResult status = cuptiActivityGetNextRecord(buffer, validSize, &activity);
-  return (status == CUPTI_SUCCESS) ? ompt_record_native : ompt_record_invalid;
-}
-
 
 void
 cupti_start()

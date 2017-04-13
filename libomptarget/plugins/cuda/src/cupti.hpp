@@ -138,6 +138,15 @@ typedef enum {
 // interface functions
 //******************************************************************************
 
+extern void 
+cupti_buffer_alloc 
+(
+ uint8_t **buffer, 
+ size_t *buffer_size, 
+ size_t *maxNumRecords
+);
+
+
 extern bool
 cupti_buffer_cursor_advance
 (
@@ -193,6 +202,12 @@ cupti_device_get_timestamp
 (
  CUcontext context,
  uint64_t *time
+);
+
+
+extern void
+cupti_stop
+(
 );
 
 

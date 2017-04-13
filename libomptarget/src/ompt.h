@@ -205,8 +205,11 @@ typedef union ompt_data_u {
   void *ptr;
 } ompt_data_t;
 
-const ompt_data_t ompt_data_none = {.value=0};
+extern "C" {
 
+const ompt_data_t ompt_data_none = {0};
+
+}
 
 /*---------------------
  * ompt_frame_t
@@ -269,7 +272,7 @@ typedef uint64_t ompt_buffer_cursor_t;
 
 typedef uint64_t ompt_target_id_t; 
 
-typedef enum ompt_native_mon_flags_e{
+typedef enum ompt_native_mon_flags_e {
     ompt_native_data_motion_explicit = 1,
     ompt_native_data_motion_implicit = 2,
     ompt_native_kernel_invocation    = 4,
@@ -280,13 +283,13 @@ typedef enum ompt_native_mon_flags_e{
     ompt_native_idleness	     = 128
 } ompt_native_mon_flags_t;
 
-typedef enum ompt_record_type_e{
+typedef enum ompt_record_type_e {
     ompt_record_ompt    = 1,
     ompt_record_native  = 2,
     ompt_record_invalid = 3
 } ompt_record_type_t; 
 
-typedef enum ompt_target_type_e{
+typedef enum ompt_target_type_e {
     ompt_task_target	        = 1,
     ompt_task_target_enter_data = 2,
     ompt_task_target_exit_data  = 3,
@@ -311,6 +314,35 @@ typedef struct ompt_record_abstract_s {
     ompt_device_time_t end_time; 
     ompt_hwid_t hwid;
 } ompt_record_abstract_t;
+
+typedef struct ompt_record_type_s {
+#if 0
+  ompt_record_thread_begin_t thread_begin;
+  ompt_record_idle_t idle; 
+  ompt_record_parallel_begin_t parallel_begin;
+  ompt_record_parallel_end_t parallel_end;
+  ompt_record_task_create_t task_create;
+  ompt_record_task_dependence_t task_dep;
+  ompt_record_task_schedule_t task_sched;
+  ompt_record_implicit_t implicit;
+  ompt_record_sync_region_t sync_region;
+  ompt_record_target_t target_record;
+  ompt_record_target_data_op_t target_data_op;
+  ompt_record_target_map_t target_map;
+  ompt_record_target_kernel_t kernel;
+  ompt_record_lock_init_t lock_init;
+  ompt_record_lock_destroy_t lock_destroy;
+  ompt_record_mutex_acquire_t mutex_acquire;
+  ompt_record_mutex_t mutex;
+  ompt_record_nest_lock_t nest_lock;
+  ompt_record_master_t master;
+  ompt_record_work_t work;
+  ompt_record_flush_t flush;
+#else
+  int FIXME;
+#endif
+} ompt_record_ompt_t;
+
 
 
 /*****************************************************************************
@@ -613,7 +645,15 @@ OMPT_TARGET_API_FUNCTION(void *, ompt_get_record_native, (
 ));
 
 
-OMPT_TARGET_API_FUNCTION(ompt_record_abstract_t, ompt_get_record_abstract, (
+	
+OMPT_TARGET_API_FUNCTION(ompt_record_ompt_t *, ompt_get_record_ompt, (
+    ompt_buffer_t *buffer,
+    ompt_buffer_cursor_t current,
+    ompt_id_t *host_op_id
+));
+
+
+OMPT_TARGET_API_FUNCTION(ompt_record_abstract_t *, ompt_get_record_abstract, (
     void *native_record
 ));
 
