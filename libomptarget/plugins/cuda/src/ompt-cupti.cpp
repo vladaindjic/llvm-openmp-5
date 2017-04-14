@@ -104,7 +104,30 @@ public:
     request_callback(0), complete_callback(0)
   {
   };
+  ~ompt_device_info_t() {
+    ;
+  };
 }; 
+
+// this wrapper is needed around a vector type because otherwise a static destructor for a global vector 
+// gets called before we are done with the vector. here, we don't declare a destructor so the data
+// continues to be available.
+class device_info_t {
+public:
+  device_info_t() : data(0) {}
+  void resize(unsigned int n) {
+    data = new std::vector<ompt_device_info_t>(n);
+  }
+  unsigned int size() {
+    return data->size();
+  }
+  ompt_device_info_t &operator[](int n) {
+    return (*data)[n];
+  }
+private:
+  std::vector<ompt_device_info_t> *data;
+};
+
 
 typedef ompt_target_id_t (*libomptarget_get_target_info_t)();
 
@@ -142,13 +165,11 @@ static const char *ompt_documentation =
 
 static bool ompt_enabled = false;
 
-static const char *ompt_version_string = 0;
-static int ompt_version_number = 0;
-
 static libomptarget_get_target_info_t        libomptarget_get_target_info;
-static ompt_callback_device_initialize_t libomp_callback_device_initialize;
+static ompt_callback_device_initialize_t     libomp_callback_device_initialize;
+static ompt_callback_device_finalize_t       libomp_callback_device_finalize;
 
-static std::vector<ompt_device_info_t> device_info;
+static device_info_t device_info;
 
 static context_to_device_map_t context_to_device_map;
 
@@ -209,32 +230,55 @@ ompt_device_get_type
 }
 
 
+#define fnptr_to_ptr(x) ((void *) (uint64_t) x)
 
 static void
 ompt_device_rtl_init
 (
  ompt_function_lookup_t lookup, 
- const char *version_string,
- unsigned int version_number
+ ompt_fns_t *fns
 )
 {
   DP("enter ompt_device_rtl_init\n");
 
   ompt_enabled = true;
-  ompt_version_string = version_string;
-  ompt_version_number = version_number;
 
   libomptarget_get_target_info = 
     (libomptarget_get_target_info_t) lookup("libomptarget_get_target_info");
 
-  DP("libomptarget_get_target_info = %p\n", (void *) (uint64_t) libomptarget_get_target_info);
+  DP("libomptarget_get_target_info = %p\n", fnptr_to_ptr(libomptarget_get_target_info));
 
   libomp_callback_device_initialize = 
     (ompt_callback_device_initialize_t) lookup("libomp_callback_device_initialize");
 
-  DP("libomp_callback_device_initialize = %p\n",  (void *) (uint64_t) libomp_callback_device_initialize);
+  libomp_callback_device_finalize = 
+    (ompt_callback_device_finalize_t) lookup("libomp_callback_device_finalize");
+
+  DP("libomp_callback_device_initialize = %p\n",  fnptr_to_ptr(libomp_callback_device_initialize));
   
   DP("exit ompt_device_rtl_init\n");
+}
+
+
+static void
+ompt_device_rtl_fini
+(
+ ompt_fns_t *fns
+)
+{
+  DP("enter cuda_ompt_fini\n");
+
+  if (libomp_callback_device_finalize) {
+    for (unsigned int i = 0; i < device_info.size(); i++) {
+      if (device_info[i].initialized) {
+	libomp_callback_device_finalize(device_info[i].global_id); 
+      }
+    }
+  }
+
+  ompt_enabled = false;
+
+  DP("exit cuda_ompt_fini\n");
 }
 
 
@@ -251,18 +295,18 @@ ompt_device_infos_alloc
 static bool 
 ompt_device_info_init
 (
- int device_id, 
- int omp_device_id,
+ int relative_id, 
+ int global_id,
  CUcontext context
 )
 {
-  bool valid_device = device_id < (int) device_info.size();
+  bool valid_device = relative_id < (int) device_info.size();
 
   if (valid_device) {
-    device_info[device_id].relative_id = device_id;
-    device_info[device_id].global_id = omp_device_id;
-    device_info[device_id].context = context;
-    device_info[device_id].initialized = 1;
+    device_info[relative_id].relative_id = relative_id;
+    device_info[relative_id].global_id = global_id;
+    device_info[relative_id].context = context;
+    device_info[relative_id].initialized = 1;
   }
 
   return valid_device;
@@ -646,9 +690,9 @@ extern "C" {
 
 __attribute__ (( weak ))
 void
-libomptarget_start_tool
+libomptarget_rtl_ompt_init
 (
- ompt_initialize_t ompt_init
+ ompt_fns_t *fns
 )
 {
   // no initialization of OMPT for device-specific rtl unless 
@@ -664,17 +708,21 @@ ompt_init
  int num_devices
 )
 {
+  static ompt_fns_t cuda_rtl_fns;
   static bool initialized;
 
   DP("enter ompt_init\n");
 
   if (initialized == false) {
-    void *vptr = dlsym(NULL, "libomptarget_start_tool");
-    ompt_target_start_tool_t libomptarget_start_tool_fn = 
-      reinterpret_cast<ompt_target_start_tool_t>(reinterpret_cast<long>(vptr));
+    void *vptr = dlsym(NULL, "libomptarget_rtl_ompt_init");
+    ompt_finalize_t libomptarget_rtl_ompt_init = 
+      reinterpret_cast<ompt_finalize_t>(reinterpret_cast<long>(vptr));
 
-    if (libomptarget_start_tool_fn) {
-      libomptarget_start_tool_fn(ompt_device_rtl_init);
+    if (libomptarget_rtl_ompt_init) {
+      cuda_rtl_fns.initialize = ompt_device_rtl_init;
+      cuda_rtl_fns.finalize =   ompt_device_rtl_fini;
+
+      libomptarget_rtl_ompt_init(&cuda_rtl_fns);
     }
     ompt_device_infos_alloc(num_devices);
     initialized = true;

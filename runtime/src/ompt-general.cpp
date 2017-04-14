@@ -77,6 +77,8 @@ ompt_callbacks_t ompt_callbacks;
 
 static ompt_initialize_t  ompt_initialize_fn = NULL;
 
+static ompt_fns_t *libomptarget_ompt_fns = NULL;
+
 
 
 /*****************************************************************************
@@ -265,6 +267,10 @@ void ompt_post_init()
 void ompt_fini()
 {
     if (ompt_enabled) {
+      if (libomptarget_ompt_fns) {
+	libomptarget_ompt_fns->finalize(libomptarget_ompt_fns);
+      }
+
         if (ompt_callbacks.ompt_callback(ompt_event_runtime_shutdown)) {
             ompt_callbacks.ompt_callback(ompt_event_runtime_shutdown)();
         }
@@ -531,7 +537,7 @@ libomp_set_frame_reenter
 static void
 libomp_callback_target
 (
-  int32_t device_id, 
+  uint64_t device_num, 
   uint64_t target_region_id, 
   ompt_scope_endpoint_t beg_end
 )
@@ -546,7 +552,7 @@ libomp_callback_target
     ompt_data_t *task_data = &task_data_dummy;
 
     ompt_callbacks.ompt_callback(ompt_event_target)
-      (ompt_task_target, beg_end, device_id, task_data, target_region_id, codeptr_ra); 
+      (ompt_task_target, beg_end, device_num, task_data, target_region_id, codeptr_ra); 
   }
   DP("leave libomp_event_target\n");
 }
@@ -574,6 +580,68 @@ libomp_callback_device_initialize
 }
 
 
+static void
+libomp_callback_device_finalize
+(
+  uint64_t device_num 
+)
+{
+  DP("enter libomp_event_device_finalize\n");
+
+  assert(ompt_enabled && 
+	 ompt_callbacks.ompt_callback(ompt_event_device_finalize));
+
+  ompt_callbacks. ompt_callback(ompt_event_device_finalize)(device_num);
+
+  DP("leave libomp_event_device_finalize\n");
+}
+
+
+static void
+libomp_callback_device_load
+(
+ uint64_t device_num, 
+ const char *filename,
+ int64_t file_offset,
+ void *file_addr,
+ void *host_addr,
+ void *device_addr,
+ uint64_t module_id
+)
+{
+  DP("enter libomp_callback_device_load\n");
+
+  assert(ompt_enabled);
+
+  if (ompt_callbacks.ompt_callback(ompt_event_device_load)) {
+    ompt_callbacks.ompt_callback(ompt_event_device_load)
+      (device_num, filename, file_offset, file_addr, host_addr, device_addr, module_id);
+  }
+
+  DP("leave libomp_callback_device_load\n");
+}
+
+    
+
+static void
+libomp_callback_device_unload
+(
+  uint64_t device_num, 
+  uint64_t module_id
+)
+{
+  DP("enter libomp_callback_device_unload\n");
+
+  assert(ompt_enabled);
+
+  if (ompt_callbacks.ompt_callback(ompt_event_device_unload)) {
+    ompt_callbacks.ompt_callback(ompt_event_device_unload)
+      (device_num, module_id);
+  }
+
+  DP("leave libomp_callback_device_unload\n");
+}
+
 static ompt_interface_fn_t 
 libomp_target_fn_lookup(const char *s)
 {
@@ -590,23 +658,22 @@ libomp_target_fn_lookup(const char *s)
 
 _OMP_EXTERN
 void 
-ompt_target_start_tool
+libomp_libomptarget_ompt_init
 (
-  ompt_initialize_t libomptarget_init
+  ompt_fns_t *fns
 )
 {
-  DP("enter ompt_target_start_tool\n");
+  DP("enter libomp_libomptarget_ompt_init\n");
   __ompt_force_initialization();
 
   if (ompt_enabled && 
       ompt_callbacks.ompt_callback(ompt_event_device_initialize)) {
-    if (libomptarget_init) {
-      DP("calling libomptarget_init(...)\n");
-      libomptarget_init(libomp_target_fn_lookup, 
-			ompt_get_runtime_version(), 
-			OMPT_VERSION);
+    if (fns) {
+      fns->initialize(libomp_target_fn_lookup, fns); 
+      libomptarget_ompt_fns = fns;
     }
   }
+  DP("leave libomp_libomptarget_ompt_init\n");
 }
 
 

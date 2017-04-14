@@ -176,7 +176,10 @@
     macro (ompt_event_task_dependences,         ompt_task_dependences_callback_t, 69) /* report task dependences  */\
     macro (ompt_event_task_dependence_pair,     ompt_task_pair_callback_t,     70) /* report task dependence pair */\
     macro (ompt_event_target,                   ompt_callback_target_t, 71) /* target region*/\
-    macro (ompt_event_device_initialize,	ompt_callback_device_initialize_t, 72) /* initialize device tracing interface */
+    macro (ompt_event_device_initialize,	ompt_callback_device_initialize_t, 72) /* initialize device tracing interface */\
+    macro (ompt_event_device_finalize,		ompt_callback_device_finalize_t, 73) /* finalize device tracing interface */\
+    macro (ompt_event_device_load,		ompt_callback_device_load_t, 74)   /* load code onto a device */\
+    macro (ompt_event_device_unload,		ompt_callback_device_unload_t, 75)   /* load code onto a device */
 
 
 
@@ -205,15 +208,9 @@ typedef union ompt_data_u {
   void *ptr;
 } ompt_data_t;
 
-#ifdef  __cplusplus
-extern "C" {
-#endif
 
 const ompt_data_t ompt_data_none = {0};
 
-#ifdef  __cplusplus
-}
-#endif
 
 /*---------------------
  * ompt_frame_t
@@ -481,11 +478,32 @@ typedef void (*ompt_control_callback_t) (
 
 /* target */ 
 typedef void (*ompt_callback_device_initialize_t)(
-    int device_id,
+    uint64_t device_id,
     const char *type,
     ompt_device_t *device,
     ompt_function_lookup_t lookup,
     const char *documentation
+);
+
+typedef void (*ompt_callback_device_finalize_t)(
+    uint64_t device_id
+);
+
+#define ompt_value_unknown (~0ULL) 
+
+typedef void (*ompt_callback_device_load_t)(
+    uint64_t device_num,
+    const char *filename,
+    int64_t file_offset,
+    void *file_addr,
+    void *host_addr,
+    void *device_addr,
+    uint64_t module_id
+);
+
+typedef void (*ompt_callback_device_unload_t)(
+    uint64_t device_num,
+    uint64_t module
 );
 
 /* target region */
@@ -635,27 +653,22 @@ OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
     int buffer_owned
 ));
 
-	
 OMPT_TARGET_API_FUNCTION(ompt_record_type_t, ompt_get_record_type, (
     ompt_buffer_t *buffer,
     ompt_buffer_cursor_t current
 ));
-
 	
 OMPT_TARGET_API_FUNCTION(void *, ompt_get_record_native, (
     ompt_buffer_t *buffer,
     ompt_buffer_cursor_t current,
     ompt_id_t *host_op_id
 ));
-
-
 	
 OMPT_TARGET_API_FUNCTION(ompt_record_ompt_t *, ompt_get_record_ompt, (
     ompt_buffer_t *buffer,
     ompt_buffer_cursor_t current,
     ompt_id_t *host_op_id
 ));
-
 
 OMPT_TARGET_API_FUNCTION(ompt_record_abstract_t *, ompt_get_record_abstract, (
     void *native_record
@@ -704,12 +717,28 @@ OMPT_API_FUNCTION(void, ompt_initialize, (
     unsigned int ompt_version
 ));
 
+OMPT_API_FUNCTION(void, ompt_initialize_5, (
+    ompt_function_lookup_t ompt_fn_lookup,
+    struct ompt_fns_t *fns
+));
+
+OMPT_API_FUNCTION(void, ompt_finalize, (
+    struct ompt_fns_t *fns
+));
+
+typedef struct ompt_fns_t {
+  ompt_initialize_5_t initialize;
+  ompt_finalize_t   finalize;
+} ompt_fns_t;
+
 
 /* initialization interface to be defined by tool */
 ompt_initialize_t ompt_tool(void);
 
+
 /* initialization interface used by libomptarget */
-void ompt_target_start_tool(ompt_initialize_t);
+void libomp_libomptarget_ompt_init(ompt_fns_t *);
+
 
 OMPT_API_FUNCTION(int, ompt_set_callback, (
     ompt_event_t event,

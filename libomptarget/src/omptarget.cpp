@@ -42,6 +42,29 @@
 #define INF_REF_CNT (LONG_MAX>>1) // leave room for additions/subtractions
 #define CONSIDERED_INF(x) (x > (INF_REF_CNT>>1))
 
+#define fnptr_to_ptr(x) ((void *) (uint64_t) x)
+
+
+//******************************************************************************
+// static variables
+//******************************************************************************
+
+class libomptarget_rtl_fns_t : std::list<ompt_fns_t *> {
+public:
+  void register_rtl(ompt_fns_t *fns) {
+    push_back(fns);
+  };
+  void finalize() {
+    for(ompt_fns_t *fns : *this) {
+      fns->finalize(fns);
+    }
+  };
+};
+
+static libomptarget_rtl_fns_t libomptarget_rtl_fns;
+
+static int libomptarget_debug_wait_flag = 1;
+
 
 
 //******************************************************************************
@@ -49,7 +72,6 @@
 //******************************************************************************
 extern "C" {
 
-int libomptarget_debug_wait_flag = 1;
 
 void
 libomptarget_debug_continue()
@@ -167,54 +189,75 @@ ompt_target_operation_id()
 
 __attribute__ (( weak ))
 void
-ompt_target_start_tool
+libomp_libomptarget_ompt_init 
 (
- ompt_initialize_t initializer
+ ompt_fns_t *fns 
 )
 {
   // no initialization of OMPT for libomptarget unless 
   // libomp implements this function
-  DP("in libomptarget start tool\n");
+  DP("in dummy libomp_libomptarget_ompt_init\n");
 }
 
 
 static void
-ompt_libomptarget_init
+libomptarget_ompt_initialize
 (
  ompt_function_lookup_t lookup, 
- const char *version_string,
- unsigned int version_number
+ ompt_fns_t *fns
 )
 {
-  DP("enter ompt_libomptarget_init!\n");
+  DP("enter libomptarget_ompt_initialize!\n");
 
   ompt_enabled = true;
 
+
 #define ompt_bind_name(fn) \
-  fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fn);
+  fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fnptr_to_ptr(fn));
 
   FOREACH_OMPT_TARGET_FN(ompt_bind_name)
 
 #undef ompt_bind_name
 
-  libomp_version_string = version_string;
-  libomp_version_number = version_number;
-
-  DP("exit ompt_libomptarget_init!\n");
+  DP("exit libomptarget_ompt_initialize!\n");
 }
 
-typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
+
+static void
+libomptarget_ompt_finalize
+(
+ ompt_fns_t *fns
+)
+{
+  DP("enter libomptarget_ompt_finalize!\n");
+
+  libomptarget_rtl_fns.finalize(); 
+
+  ompt_enabled = false;
+
+  DP("exit libomptarget_ompt_finalize!\n");
+}
+
+
+typedef void (*libomp_libomptarget_ompt_init_t) (ompt_fns_t*);
 
 static void
 ompt_init()
 {
+  static ompt_fns_t libomptarget_ompt_fns;
   static bool initialized = false;
 
   if (initialized == false) {
+    libomptarget_ompt_fns.initialize = libomptarget_ompt_initialize;
+    libomptarget_ompt_fns.finalize   = libomptarget_ompt_finalize;
+    
     DP("in ompt_init\n");
-    ompt_target_start_tool_t ompt_target_start_tool_fn = 
-      (ompt_target_start_tool_t) dlsym(NULL, "ompt_target_start_tool");
-    ompt_target_start_tool_fn(ompt_libomptarget_init);
+    libomp_libomptarget_ompt_init_t libomp_libomptarget_ompt_init_fn = 
+      (libomp_libomptarget_ompt_init_t) (uint64_t) dlsym(NULL, "libomp_libomptarget_ompt_init");
+
+    if (libomp_libomptarget_ompt_init_fn) {
+      libomp_libomptarget_ompt_init_fn(&libomptarget_ompt_fns);
+    }
     initialized = true;
   }
 }
@@ -233,7 +276,7 @@ libomptarget_get_target_info
 
 
 static ompt_interface_fn_t 
-rtl_fn_lookup
+libomptarget_rtl_fn_lookup
 (
  const char *fname
 )
@@ -241,8 +284,12 @@ rtl_fn_lookup
   if (strcmp(fname, "libomptarget_get_target_info") == 0) 
     return (ompt_interface_fn_t) libomptarget_get_target_info;
 
-  if (strcmp(fname, "libomp_callback_device_initialize") == 0) 
-    return (ompt_interface_fn_t) libomp_callback_device_initialize;
+#define lookup_libomp_fn(fn) \
+  if (strcmp(fname, #fn) == 0) return (ompt_interface_fn_t) fn;
+
+  FOREACH_OMPT_TARGET_FN(lookup_libomp_fn)
+
+#undef lookup_libomp_fn
 
   return 0;
 }
@@ -252,10 +299,27 @@ rtl_fn_lookup
 // OMPT interface operations
 //----------------------------------------
 
+
 extern "C" {
 
+
 void
-libomptarget_start_tool
+libomptarget_rtl_ompt_init
+(
+ ompt_fns_t *fns
+)
+{
+  DP("enter libomptarget_rtl_ompt_init\n");
+  if (ompt_enabled && fns) {
+    libomptarget_rtl_fns.register_rtl(fns); 
+    
+    fns->initialize(libomptarget_rtl_fn_lookup, fns);
+  }
+  DP("leave libomptarget_rtl_ompt_init\n");
+}
+
+void
+libomptarget_rtl_start_tool
 (
  ompt_initialize_t target_rtl_init
 )
@@ -263,7 +327,7 @@ libomptarget_start_tool
   DP("in libomptarget_start_tool\n");
   if (ompt_enabled) {
     DP("calling target_rtl_init \n");
-    target_rtl_init(rtl_fn_lookup, libomp_version_string, libomp_version_number);
+    target_rtl_init(libomptarget_rtl_fn_lookup, libomp_version_string, libomp_version_number);
   }
 }
 
