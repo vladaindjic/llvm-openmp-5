@@ -17,9 +17,17 @@
 #include <cuda.h>
 
 extern void
-ompt_init(
+ompt_init
+(
   int num_devices
 );
+
+
+extern void
+ompt_fini
+(
+);
+
 
 extern void
 ompt_device_init
@@ -27,6 +35,6 @@ ompt_device_init
  int device_id, 
  int omp_device_id,
  CUcontext context
- );
+);
 
 #endif

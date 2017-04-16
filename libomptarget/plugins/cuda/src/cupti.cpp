@@ -231,7 +231,8 @@ runtime_activities[] = {
 //******************************************************************************
 
 cupti_correlation_callback_t 
-cupti_correlation_callback = 0;
+cupti_correlation_callback = 
+  cupti_correlation_callback_dummy;
 
 cupti_activity_dispatch_t cupti_activity_dispatch_print;
 
@@ -244,6 +245,10 @@ cupti_error_callback = cupti_error_callback_dummy;
 cupti_activity_buffer_mgmt_t cupti_activity_buffer_mgmt_data;
 
 cupti_activity_buffer_mgmt_t *cupti_activity_buffer_mgmt = 0;
+
+cupti_load_callback_t cupti_load_callback = 0;
+
+cupti_load_callback_t cupti_unload_callback = 0;
 
 
 
@@ -266,11 +271,13 @@ cupti_subscriber_callback
       CUpti_ModuleResourceData *mrd = (CUpti_ModuleResourceData *) rd->resourceDescriptor;
       printf("loaded module id %d, cubin size %ld, cubin %p\n", 
 	     mrd->moduleId, mrd->cubinSize, mrd->pCubin);
+      DISPATCH_CALLBACK(cupti_load_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
     if (cb_id == CUPTI_CBID_RESOURCE_MODULE_UNLOAD_STARTING) {
       CUpti_ModuleResourceData *mrd = (CUpti_ModuleResourceData *) rd->resourceDescriptor;
       printf("unloaded module id %d, cubin size %ld, cubin %p\n", 
 	     mrd->moduleId, mrd->cubinSize, mrd->pCubin);
+      DISPATCH_CALLBACK(cupti_unload_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
   } else if (CUPTI_CB_DOMAIN_DRIVER_API) {
     if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) ||
@@ -741,10 +748,11 @@ cupti_buffer_process_and_free
 }
 
 
-static void
+void
 cupti_correlation_enable()
 {
   if (cupti_correlation_callback) {
+    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
     cuptiSubscribe(&cupti_subscriber, 
 		   (CUpti_CallbackFunc) cupti_subscriber_callback,
 		   (void *) NULL);
@@ -754,9 +762,10 @@ cupti_correlation_enable()
 }
 
 
-static void
+void
 cupti_correlation_disable()
 {
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
   cuptiUnsubscribe(cupti_subscriber); 
   cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
   cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);

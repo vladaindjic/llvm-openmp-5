@@ -27,8 +27,19 @@
 // local include files
 //******************************************************************************
 
+#include "rtl.h"
 #include "cuda.hpp"
 
+#undef DEBUGP
+#define DEBUGP(prefix, ...)                                                    \
+  {                                                                            \
+    fprintf(stderr, "%s --> ", prefix);                                        \
+    fprintf(stderr, __VA_ARGS__);                                              \
+  }
+
+#include <inttypes.h>
+#define DPxMOD "0x%0*" PRIxPTR
+#define DPxPTR(ptr) ((int)(2*sizeof(uintptr_t))), ((uintptr_t) (ptr))
 
 
 //******************************************************************************
@@ -212,11 +223,16 @@ cuda_context_set
  CUcontext context
 )
 {
+  DP("enter cuda_context_set(context=%p)\n", context); 
+
   CUresult result = cuCtxSetCurrent(context);
   bool success = (result == CUDA_SUCCESS);
   if (!success) {
     cuda_result_report(result, "cuCtxSetCurrent");
   }
+
+  DP("exit cuda_context_set returns %d\n", success); 
+
   return success; 
 }
 

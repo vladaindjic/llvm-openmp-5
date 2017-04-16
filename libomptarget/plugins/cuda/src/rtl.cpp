@@ -215,6 +215,8 @@ public:
         }
       }
 
+    ompt_fini();
+
     // Destroy contexts
     for (auto &ctx : Contexts)
       if (ctx) {

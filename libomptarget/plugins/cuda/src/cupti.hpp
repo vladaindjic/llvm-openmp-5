@@ -97,6 +97,14 @@ typedef struct {
 } cupti_activity_dispatch_t;
 
 
+typedef void (*cupti_load_callback_t)
+(
+ int module_id, 
+ const void *cubin, 
+ size_t cubin_size
+);
+
+
 
 //******************************************************************************
 // constants
@@ -164,6 +172,15 @@ cupti_buffer_cursor_isvalid
  CUpti_Activity *activity
 );
 
+void
+cupti_correlation_enable
+(
+);
+
+extern void
+cupti_correlation_disable
+(
+);
 
 extern void
 cupti_correlation_callback_register
