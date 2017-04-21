@@ -37,4 +37,24 @@ ompt_device_init
  CUcontext context
 );
 
+
+extern void
+ompt_binary_load
+(
+ int device_id, 
+ const char *load_module,
+ void *addr
+);
+
+
+extern void
+ompt_binary_unload
+(
+ int device_id, 
+ const char *load_module,
+ void *addr
+);
+
+
+
 #endif

@@ -69,6 +69,22 @@ struct KernelTy {
 /// FIXME: we may need this to be per device and per library.
 std::list<KernelTy> KernelsList;
 
+class ModuleInfo {
+public:
+  ModuleInfo(int _id, const char *_name, void *_addr) {
+    id = _id;
+    name = _name;
+    addr = _addr;
+  };
+  const char *fileName() { return name; };
+  void *fileAddress() { return addr; };
+  int deviceId() { return id; };
+private:
+  const char *name;
+  void *addr;
+  int id;
+};
+
 /// Class containing all the device information.
 class RTLDeviceInfoTy {
   std::vector<FuncOrGblEntryTy> FuncGblEntries;
@@ -77,6 +93,8 @@ public:
   int NumberOfDevices;
   std::vector<CUmodule> Modules;
   std::vector<CUcontext> Contexts;
+
+  std::vector<ModuleInfo *> ModuleInfos;
 
   // Device properties
   std::vector<int> ThreadsPerBlock;
@@ -206,14 +224,18 @@ public:
 
   ~RTLDeviceInfoTy() {
     // Close modules
-    for (auto &module : Modules)
+    for (unsigned int i=0; i < Modules.size(); i++) {
+      CUmodule &module = Modules[i]; 
+      ModuleInfo *mi = ModuleInfos[i]; 
       if (module) {
+        ompt_binary_unload(mi->deviceId(), mi->fileName(), mi->fileAddress());
         CUresult err = cuModuleUnload(module);
         if (err != CUDA_SUCCESS) {
           DP("Error when unloading CUDA module\n");
           CUDA_ERR_STRING(err);
         }
       }
+    }
 
     ompt_fini();
 
@@ -344,8 +366,8 @@ int32_t __tgt_rtl_init_device(int32_t device_id, int32_t omp_device_id) {
   return OFFLOAD_SUCCESS;
 }
 
-__tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
-    __tgt_device_image *image) {
+__tgt_target_table *__tgt_rtl_load_binary (int32_t device_id, 
+  const char *filename, __tgt_device_image *image) {
 
   // Set the context we are using.
   CUresult err = cuCtxSetCurrent(DeviceInfo.Contexts[device_id]);
@@ -362,6 +384,7 @@ __tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
 
   CUmodule cumod;
   DP("Load data from image " DPxMOD "\n", DPxPTR(image->ImageStart));
+  ompt_binary_load(device_id, filename, image->ImageStart);
   err = cuModuleLoadDataEx(&cumod, image->ImageStart, 0, NULL, NULL);
   if (err != CUDA_SUCCESS) {
     DP("Error when loading CUDA module\n");
@@ -371,6 +394,7 @@ __tgt_target_table *__tgt_rtl_load_binary(int32_t device_id,
 
   DP("CUDA module successfully loaded!\n");
   DeviceInfo.Modules.push_back(cumod);
+  DeviceInfo.ModuleInfos.push_back(new ModuleInfo(device_id, filename, image->ImageStart));
 
   // Find the symbols in the module by name.
   __tgt_offload_entry *HostBegin = image->EntriesBegin;

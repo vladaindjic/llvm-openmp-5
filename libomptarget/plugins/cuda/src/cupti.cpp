@@ -23,6 +23,26 @@
 #include <stdlib.h>
 #endif
 
+//******************************************************************************
+// local include files
+//******************************************************************************
+
+#undef DEBUGP
+#define DEBUGP(prefix, ...)                                                    \
+  {                                                                            \
+    fprintf(stderr, "%s --> ", prefix);                                        \
+    fprintf(stderr, __VA_ARGS__);                                              \
+  }
+
+#include <inttypes.h>
+#define DPxMOD "0x%0*" PRIxPTR
+#define DPxPTR(ptr) ((int)(2*sizeof(uintptr_t))), ((uintptr_t) (ptr))
+
+#include "rtl.h" 
+
+#undef DP
+#define DP(...)
+
 
 
 //******************************************************************************
@@ -265,17 +285,19 @@ cupti_subscriber_callback
  const CUpti_CallbackData *cb_info
 )
 {
+  DP("enter cupti_subscriber_callback\n");
+
   if (domain == CUPTI_CB_DOMAIN_RESOURCE) {
     const CUpti_ResourceData *rd = (const CUpti_ResourceData *) cb_info;
     if (cb_id == CUPTI_CBID_RESOURCE_MODULE_LOADED) {
       CUpti_ModuleResourceData *mrd = (CUpti_ModuleResourceData *) rd->resourceDescriptor;
-      printf("loaded module id %d, cubin size %ld, cubin %p\n", 
+      DP("loaded module id %d, cubin size %ld, cubin %p\n", 
 	     mrd->moduleId, mrd->cubinSize, mrd->pCubin);
       DISPATCH_CALLBACK(cupti_load_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
     if (cb_id == CUPTI_CBID_RESOURCE_MODULE_UNLOAD_STARTING) {
       CUpti_ModuleResourceData *mrd = (CUpti_ModuleResourceData *) rd->resourceDescriptor;
-      printf("unloaded module id %d, cubin size %ld, cubin %p\n", 
+      DP("unloaded module id %d, cubin size %ld, cubin %p\n", 
 	     mrd->moduleId, mrd->cubinSize, mrd->pCubin);
       DISPATCH_CALLBACK(cupti_unload_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
@@ -299,6 +321,8 @@ cupti_subscriber_callback
       }
     }
   }
+
+  DP("exit cupti_subscriber_callback\n");
 }
 
 
@@ -749,13 +773,22 @@ cupti_buffer_process_and_free
 
 
 void
-cupti_correlation_enable()
+cupti_correlation_enable
+(
+  cupti_load_callback_t load_callback,
+  cupti_load_callback_t unload_callback
+)
 {
+  cupti_load_callback = load_callback;
+  cupti_unload_callback = unload_callback;
+
   if (cupti_correlation_callback) {
     cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+
     cuptiSubscribe(&cupti_subscriber, 
 		   (CUpti_CallbackFunc) cupti_subscriber_callback,
 		   (void *) NULL);
+
     cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
     cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
   }
@@ -766,9 +799,14 @@ void
 cupti_correlation_disable()
 {
   cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+
   cuptiUnsubscribe(cupti_subscriber); 
+
   cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
   cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
+
+  cupti_load_callback = 0;
+  cupti_unload_callback = 0;
 }
 
 
@@ -784,7 +822,7 @@ cupti_start()
   
   cupti_activity_dispatch_print_init();
 
-  cupti_correlation_enable();
+  cupti_correlation_enable(0,0);
   cupti_set_monitoring(kernel_execution_activities, true);
   CUPTI_CALL(cuptiActivityRegisterCallbacks, 
 	     (cupti_buffer_alloc, cupti_buffer_process_and_free));

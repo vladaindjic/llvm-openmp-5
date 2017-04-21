@@ -591,7 +591,7 @@ libomp_callback_device_finalize
   assert(ompt_enabled && 
 	 ompt_callbacks.ompt_callback(ompt_event_device_finalize));
 
-  ompt_callbacks. ompt_callback(ompt_event_device_finalize)(device_num);
+  ompt_callbacks.ompt_callback(ompt_event_device_finalize)(device_num);
 
   DP("leave libomp_event_device_finalize\n");
 }

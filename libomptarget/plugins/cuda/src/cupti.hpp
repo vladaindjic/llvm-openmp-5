@@ -172,10 +172,14 @@ cupti_buffer_cursor_isvalid
  CUpti_Activity *activity
 );
 
+
 void
 cupti_correlation_enable
 (
+  cupti_load_callback_t load_callback,
+  cupti_load_callback_t unload_callback
 );
+
 
 extern void
 cupti_correlation_disable

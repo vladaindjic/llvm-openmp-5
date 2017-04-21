@@ -34,6 +34,8 @@
 // Header file for OMPT interface support shared libomp
 #include "omptarget-ompt.h"
 
+#include "loadmap.cpp"
+
 //******************************************************************************
 // macros
 //******************************************************************************
@@ -459,7 +461,7 @@ struct DeviceTy {
 
   // calls to RTL
   int32_t initOnce();
-  __tgt_target_table *load_binary(void *Img);
+  __tgt_target_table *load_binary(__tgt_device_image *Img);
 
   int32_t data_submit(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size);
   int32_t data_retrieve(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
@@ -482,7 +484,7 @@ struct RTLInfoTy {
   typedef int32_t(is_valid_binary_ty)(void *);
   typedef int32_t(number_of_devices_ty)();
   typedef int32_t(init_device_ty)(int32_t, int32_t);
-  typedef __tgt_target_table *(load_binary_ty)(int32_t, void *);
+  typedef __tgt_target_table *(load_binary_ty)(int32_t, const char *, __tgt_device_image *);
   typedef void *(data_alloc_ty)(int32_t, int64_t);
   typedef int32_t(data_submit_ty)(int32_t, void *, void *, int64_t);
   typedef int32_t(data_retrieve_ty)(int32_t, void *, void *, int64_t);
@@ -1285,10 +1287,11 @@ int32_t DeviceTy::initOnce() {
 }
 
 // Load binary to device.
-__tgt_target_table *DeviceTy::load_binary(void *Img) {
+__tgt_target_table *DeviceTy::load_binary(__tgt_device_image *Img) {
   ompt_target_operation_begin();
+  const char *load_module = lm_addr_to_module(Img->ImageStart); 
   RTL->Mtx.lock();
-  __tgt_target_table *rc = RTL->load_binary(RTLDeviceID, Img);
+  __tgt_target_table *rc = RTL->load_binary(RTLDeviceID, load_module, Img);
   RTL->Mtx.unlock();
   ompt_target_operation_end();
   return rc;
