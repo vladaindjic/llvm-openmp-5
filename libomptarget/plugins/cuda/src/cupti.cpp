@@ -62,64 +62,71 @@
 
 #define CUPTI_ACTIVITY_BUFFER_SIZE (64 * 1024)
 
+
 #define CUPTI_ACTIVITY_BUFFER_ALIGNMENT (8)
 
-#define FOREACH_CUPTI_STATUS(macro)	\
-  macro(CUPTI_SUCCESS)			\
-  macro(CUPTI_ERROR_INVALID_PARAMETER)	\
-  macro(CUPTI_ERROR_INVALID_DEVICE)	\
-  macro(CUPTI_ERROR_INVALID_CONTEXT)	\
+
+#define FOREACH_CUPTI_STATUS(macro)	              \
+  macro(CUPTI_SUCCESS)				      \
+  macro(CUPTI_ERROR_INVALID_PARAMETER)		      \
+  macro(CUPTI_ERROR_INVALID_DEVICE)		      \
+  macro(CUPTI_ERROR_INVALID_CONTEXT)		      \
   macro(CUPTI_ERROR_NOT_INITIALIZED) 	
 
-#define FOREACH_ACTIVITY_OVERHEAD(macro)	\
-  macro(DRIVER, COMPILER)			\
-  macro(CUPTI, BUFFER_FLUSH)			\
-  macro(CUPTI, INSTRUMENTATION)			\
-  macro(CUPTI, RESOURCE)
 
-#define FOREACH_OBJECT_KIND(macro)	\
-  macro(PROCESS, pt.processId)			\
-  macro(THREAD, pt.threadId)			\
-  macro(DEVICE, dcs.deviceId)			\
-  macro(CONTEXT, dcs.contextId)			\
-  macro(STREAM, dcs.streamId)
+#define FOREACH_ACTIVITY_OVERHEAD(macro)	      \
+  macro(DRIVER, COMPILER)			      \
+  macro(CUPTI,  BUFFER_FLUSH)			      \
+  macro(CUPTI,  INSTRUMENTATION)		      \
+  macro(CUPTI,  RESOURCE)
 
-#define FOREACH_MEMCPY_KIND(macro) \
-  macro(ATOA)			   \
-  macro(ATOD)			   \
-  macro(ATOH)			   \
-  macro(DTOA)			   \
-  macro(DTOD)			   \
-  macro(DTOH)			   \
-  macro(HTOA)			   \
-  macro(HTOD)			   \
+
+#define FOREACH_OBJECT_KIND(macro)	              \
+  macro(PROCESS, pt.processId)			      \
+  macro(THREAD,  pt.threadId)			      \
+  macro(DEVICE,  dcs.deviceId)			      \
+  macro(CONTEXT, dcs.contextId)			      \
+  macro(STREAM,  dcs.streamId)
+
+
+#define FOREACH_MEMCPY_KIND(macro)                    \
+  macro(ATOA)					      \
+  macro(ATOD)					      \
+  macro(ATOH)					      \
+  macro(DTOA)					      \
+  macro(DTOD)					      \
+  macro(DTOH)					      \
+  macro(HTOA)					      \
+  macro(HTOD)					      \
   macro(HTOH)
+
 
 #define DISPATCH_CALLBACK(fn, args) if (fn) fn args
 
 
-#define FOREACH_STALL_REASON(macro)             \
-  macro(INVALID)				\
-  macro(NONE)					\
-  macro(INST_FETCH)				\
-  macro(EXEC_DEPENDENCY)			\
-  macro(MEMORY_DEPENDENCY)			\
-  macro(TEXTURE)				\
-  macro(SYNC)					\
-  macro(CONSTANT_MEMORY_DEPENDENCY)		\
-  macro(PIPE_BUSY)				\
-  macro(MEMORY_THROTTLE)			\
-  macro(NOT_SELECTED)				\
+#define FOREACH_STALL_REASON(macro)                   \
+  macro(INVALID)				      \
+  macro(NONE)					      \
+  macro(INST_FETCH)				      \
+  macro(EXEC_DEPENDENCY)			      \
+  macro(MEMORY_DEPENDENCY)			      \
+  macro(TEXTURE)				      \
+  macro(SYNC)					      \
+  macro(CONSTANT_MEMORY_DEPENDENCY)		      \
+  macro(PIPE_BUSY)				      \
+  macro(MEMORY_THROTTLE)			      \
+  macro(NOT_SELECTED)				      \
   macro(OTHER)
 
 
-#define CUPTI_CALL(fn, args)						\
-  {									\
-    CUptiResult status = fn args;                                       \
-    if (status != CUPTI_SUCCESS) {                                      \
-      cupti_error_report(status, #fn);					\
-    }                                                                   \
+#define CUPTI_CALL(fn, args)			      \
+  {						      \
+    CUptiResult status = fn args;		      \
+    if (status != CUPTI_SUCCESS) {		      \
+      cupti_error_report(status, #fn);		      \
+    }						      \
 }
+
 
 
 //******************************************************************************
@@ -150,8 +157,7 @@ typedef CUptiResult (*cupti_activity_enable_disable_t)
 typedef struct {
   CUpti_BuffersCallbackRequestFunc buffer_request; 
   CUpti_BuffersCallbackCompleteFunc buffer_complete;
-  void *buffer_processing_state;
-} cupti_activity_buffer_mgmt_t;
+} cupti_activity_buffer_state_t;
 
 
 
@@ -250,25 +256,37 @@ runtime_activities[] = {
 // static data
 //******************************************************************************
 
-cupti_correlation_callback_t 
-cupti_correlation_callback = 
+cupti_correlation_callback_t cupti_correlation_callback = 
   cupti_correlation_callback_dummy;
 
 cupti_activity_dispatch_t cupti_activity_dispatch_print;
 
-cupti_activity_dispatch_t *
-cupti_activity_dispatch = &cupti_activity_dispatch_print;
+cupti_activity_dispatch_t *cupti_activity_dispatch = 
+  &cupti_activity_dispatch_print;
 
-static cupti_error_callback_t 
-cupti_error_callback = cupti_error_callback_dummy;
+static cupti_error_callback_t cupti_error_callback = 
+  cupti_error_callback_dummy;
 
-cupti_activity_buffer_mgmt_t cupti_activity_buffer_mgmt_data;
+cupti_activity_buffer_state_t cupti_activity_enabled = { 0, 0 };
+cupti_activity_buffer_state_t cupti_activity_disabled = { 0, 0 };
 
-cupti_activity_buffer_mgmt_t *cupti_activity_buffer_mgmt = 0;
+cupti_activity_buffer_state_t *cupti_activity_state = 
+  &cupti_activity_disabled;
 
 cupti_load_callback_t cupti_load_callback = 0;
 
 cupti_load_callback_t cupti_unload_callback = 0;
+
+static cupti_dropped_callback_t cupti_dropped_callback = 
+  cupti_dropped_callback_dummy;
+
+
+#define gpu_event_decl(stall) \
+  int gpu_stall_event_ ## stall; 
+
+FOREACH_STALL_REASON(gpu_event_decl)
+
+CUpti_SubscriberHandle cupti_subscriber;
 
 
 
@@ -396,8 +414,228 @@ cupti_buffer_alloc
 
 
 //******************************************************************************
-// interface functions
+// private operations
 //******************************************************************************
+
+static void
+cupti_error_callback_dummy // __attribute__((unused))
+(
+ const char *type, 
+ const char *fn, 
+ const char *error_string
+)
+{
+  std::cerr << type << ": function " << fn 
+	    << " failed with error " << error_string << std::endl;                       
+  exit(-1);
+} 
+
+
+static void
+cupti_dropped_callback_dummy
+(
+ size_t dropped
+)
+{
+  std::cerr << "CUPTI dropped " << dropped << " samples." << std::endl;
+}
+
+
+static void
+cupti_error_report
+(
+ CUptiResult error, 
+ const char *fn
+)
+{
+  const char *error_string;
+  cuptiGetResultString(error, &error_string);
+  cupti_error_callback("CUPTI result error", fn, error_string);
+} 
+
+
+cupti_set_status_t
+cupti_set_monitoring
+(
+ const  CUpti_ActivityKind activity_kinds[],
+ bool enable
+)
+{
+  int failed = 0;
+  int succeeded = 0;
+  cupti_activity_enable_disable_t action =
+    (enable ? cuptiActivityEnable : cuptiActivityDisable);	
+  int i = 0;
+  for (;;) {
+    CUpti_ActivityKind activity_kind = activity_kinds[i++];
+    if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
+    CUptiResult status = action(activity_kind);
+    if (status == CUPTI_SUCCESS) succeeded++;
+    else failed++;
+  }
+  if (succeeded > 0) {
+    if (failed == 0) return cupti_set_all;
+    else return cupti_set_some;
+  }
+  return cupti_set_none;
+}
+
+static bool
+cupti_trace_restart
+(
+  cupti_activity_buffer_state_t * cupti_activity_next_state
+)
+{
+  cupti_activity_state = cupti_activity_next_state;
+
+  CUptiResult cupti_result = cuptiActivityRegisterCallbacks
+    (cupti_activity_state->buffer_request, cupti_activity_state->buffer_complete); 
+
+  return (cupti_result == CUPTI_SUCCESS);
+}
+
+
+//******************************************************************************
+// interface  operations
+//******************************************************************************
+
+//-------------------------------------------------------------
+// tracing control 
+//-------------------------------------------------------------
+
+bool cupti_trace_init
+(
+  CUpti_BuffersCallbackRequestFunc buffer_request, 
+  CUpti_BuffersCallbackCompleteFunc buffer_complete
+)
+{
+  cupti_activity_enabled.buffer_request = buffer_request;
+  cupti_activity_enabled.buffer_complete = buffer_complete;
+}
+
+
+void
+cupti_trace_flush()
+{
+  CUPTI_CALL(cuptiActivityFlushAll, (0));
+}
+
+
+bool 
+cupti_trace_start
+(
+)
+{
+  return cupti_trace_restart(&cupti_activity_enabled);
+}
+
+
+bool 
+cupti_trace_pause
+(
+)
+{
+  cupti_trace_flush();
+  return cupti_trace_restart(&cupti_activity_disabled);
+}
+
+
+bool 
+cupti_trace_stop
+(
+)
+{
+  return cupti_trace_pause();
+}
+
+
+//-------------------------------------------------------------
+// correlation callback control 
+//-------------------------------------------------------------
+
+void
+cupti_correlation_enable
+(
+  cupti_load_callback_t load_callback,
+  cupti_load_callback_t unload_callback
+)
+{
+  cupti_load_callback = load_callback;
+  cupti_unload_callback = unload_callback;
+
+  if (cupti_correlation_callback) {
+    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+
+    cuptiSubscribe(&cupti_subscriber, 
+		   (CUpti_CallbackFunc) cupti_subscriber_callback,
+		   (void *) NULL);
+
+    cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
+    cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
+  }
+}
+
+
+void
+cupti_correlation_disable()
+{
+  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+
+  cuptiUnsubscribe(cupti_subscriber); 
+
+  cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
+  cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
+
+  cupti_load_callback = 0;
+  cupti_unload_callback = 0;
+}
+
+
+void
+cupti_correlation_callback_register
+(
+ cupti_correlation_callback_t callback_fn
+)
+{
+  cupti_correlation_callback = callback_fn;
+}
+
+
+//-------------------------------------------------------------
+// cursor support
+//-------------------------------------------------------------
+  
+bool
+cupti_buffer_cursor_advance
+(
+ uint8_t *buffer,
+ size_t size,
+ CUpti_Activity **activity
+)
+{
+  bool status;
+  CUptiResult result = cuptiActivityGetNextRecord(buffer, size, activity);
+  status = (result == CUPTI_SUCCESS);
+  return status;
+}
+
+
+bool
+cupti_buffer_cursor_isvalid
+(
+ uint8_t *buffer,
+ size_t size,
+ CUpti_Activity *activity
+)
+{
+  CUpti_Activity *cursor = activity;
+  return cupti_buffer_cursor_advance(buffer, size, &cursor);
+}
+
+
+//-------------------------------------------------------------
+// printing support
+//-------------------------------------------------------------
 
 const char *
 cupti_activity_overhead_kind_string
@@ -488,548 +726,4 @@ cupti_activity_object_kind_id
 
 #undef macro
 }
-
-  
-bool
-cupti_buffer_cursor_advance
-(
- uint8_t *buffer,
- size_t size,
- CUpti_Activity **activity
-)
-{
-  bool status;
-  CUptiResult result = cuptiActivityGetNextRecord(buffer, size, activity);
-  status = (result == CUPTI_SUCCESS);
-  return status;
-}
-
-
-bool
-cupti_buffer_cursor_isvalid
-(
- uint8_t *buffer,
- size_t size,
- CUpti_Activity *activity
-)
-{
-  CUpti_Activity *cursor = activity;
-  return cupti_buffer_cursor_advance(buffer, size, &cursor);
-}
-
-
-void
-cupti_correlation_callback_register
-(
- cupti_correlation_callback_t callback_fn
-)
-{
-  cupti_correlation_callback = callback_fn;
-}
-
-
-void
-cupti_activity_buffer_mgmt_init
-(
-  CUpti_BuffersCallbackRequestFunc buffer_request, 
-  CUpti_BuffersCallbackCompleteFunc buffer_complete,
-  void *buffer_processing_state
-)
-{
-  cupti_activity_buffer_mgmt_t *cabm = &cupti_activity_buffer_mgmt_data;
-#define ASSIGN_FIELD(f) cabm->f = f
-  ASSIGN_FIELD(buffer_request);
-  ASSIGN_FIELD(buffer_complete);
-  ASSIGN_FIELD(buffer_processing_state);
-#undef ASSIGN_FIELD
-  cupti_activity_buffer_mgmt = &cupti_activity_buffer_mgmt_data;
-}
-
-
-bool
-cupti_pause_trace
-(
- CUcontext context,
- int begin_pause
-)
-{
-  bool result = false;
-
-  if (cupti_activity_buffer_mgmt) {
-    if (cuda_context_set(context)) {
-      if (begin_pause) {
-      } else {
-	CUptiResult cupti_result =
-	  cuptiActivityRegisterCallbacks
-	  (cupti_activity_buffer_mgmt->buffer_request, 
-	   cupti_activity_buffer_mgmt->buffer_complete); 
-
-	result = (cupti_result == CUPTI_SUCCESS);
-      }
-    }
-  }
-
-  return result;
-}
-
-
-#define EMSG(...) 
-#define monitor_real_abort() abort()
-#define hpctoolkit_stats_increment(...)
-#define get_correlation_id(ptr) (*(ptr) = 7) // test
-
-static cupti_dropped_callback_t 
-cupti_dropped_callback = cupti_dropped_callback_dummy;
-
-
-#define gpu_event_decl(stall) \
-  int gpu_stall_event_ ## stall; 
-
-FOREACH_STALL_REASON(gpu_event_decl)
-
-int illegal_event;
-
-CUpti_SubscriberHandle cupti_subscriber;
-
-
-
-//******************************************************************************
-// private operations
-//******************************************************************************
-
-static void
-cupti_error_callback_dummy // __attribute__((unused))
-(
- const char *type, 
- const char *fn, 
- const char *error_string
-)
-{
-  std::cerr << type << ": function " << fn 
-	    << " failed with error " << error_string << std::endl;                       
-  exit(-1);
-} 
-
-
-static void
-cupti_dropped_callback_dummy
-(
- size_t dropped
-)
-{
-  std::cerr << "CUPTI dropped " << dropped << " samples." << std::endl;
-}
-
-
-
-static void
-cupti_error_report
-(
- CUptiResult error, 
- const char *fn
-)
-{
-  const char *error_string;
-  cuptiGetResultString(error, &error_string);
-  cupti_error_callback("CUPTI result error", fn, error_string);
-} 
-
-
-cupti_set_status_t
-cupti_set_monitoring
-(
- const  CUpti_ActivityKind activity_kinds[],
- bool enable
-)
-{
-  int failed = 0;
-  int succeeded = 0;
-  cupti_activity_enable_disable_t action =
-    (enable ? cuptiActivityEnable : cuptiActivityDisable);	
-  int i = 0;
-  for (;;) {
-    CUpti_ActivityKind activity_kind = activity_kinds[i++];
-    if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    CUptiResult status = action(activity_kind);
-    if (status == CUPTI_SUCCESS) succeeded++;
-    else failed++;
-  }
-  if (succeeded > 0) {
-    if (failed == 0) return cupti_set_all;
-    else return cupti_set_some;
-  }
-  return cupti_set_none;
-}
-
-
-static void
-cupti_note_dropped
-(
- CUcontext ctx, 
- uint32_t stream_id
-)
-{
-    size_t dropped;
-    CUPTI_CALL(cuptiActivityGetNumDroppedRecords, (ctx, stream_id, &dropped));
-    if (dropped != 0) {
-      cupti_dropped_callback(dropped);
-    }
-}
-
-
-static void
-cupti_activity_process_unknown
-(
- CUpti_Activity *activity,
- void *state
-)    
-{
-  printf("Unknown activity kind %d\n", activity->kind);
-}
-
-
-static void
-cupti_activity_print
-(
- CUpti_Activity *activity,
- void *state
-)
-{
-  const char *name;
-
-#define macro(kind)							\
-  case CUPTI_ACTIVITY_KIND_ ## kind: name = #kind; break;
-
-  switch (activity->kind) {
-    FOREACH_ACTIVITY_KIND(macro);
-
-  default: name = "UNKNOWN"; break;
-  }
-#undef macro
-  std::cout << "Activity " << name << std::endl;
-}
-
-
-void
-cupti_activity_dispatch_print_init()
-{
-#define macro(kind) cupti_activity_dispatch_print.kind = cupti_activity_print;
-  FOREACH_ACTIVITY_KIND(macro)
-#undef macro
-} 
-
-
-static void
-cupti_activity_process
-(
- CUpti_Activity *activity,
- void *state
-)
-{
-#define macro(kind)							\
-  case CUPTI_ACTIVITY_KIND_ ## kind:					\
-    cupti_activity_dispatch->kind(activity, state);			\
-    break;
-  
-  switch (activity->kind) {
-    FOREACH_ACTIVITY_KIND(macro);
-  default:
-    cupti_activity_process_unknown(activity, state);
-    break;
-  }
-#undef macro
-}
-
-
-static void 
-cupti_buffer_process_and_free
-(
- CUcontext ctx, 
- uint32_t stream_id, 
- uint8_t *buffer, 
- size_t buffer_size, 
- size_t valid_size
-)
-{
-  CUpti_Activity *activity = NULL;
-  CUptiResult result;
-  for(;;) {
-    result = cuptiActivityGetNextRecord(buffer, valid_size, &activity);
-    if (result == CUPTI_SUCCESS) {
-      cupti_activity_process
-	(activity, cupti_activity_buffer_mgmt->buffer_processing_state);
-    } else {
-      if (result != CUPTI_ERROR_MAX_LIMIT_REACHED) {
-	cupti_error_report(result, "cuptiActivityGetNextRecord");
-      }
-      break;
-    }
-  }
-
-  cupti_note_dropped(ctx, stream_id);
-
-  free(buffer);
-}
-
-
-void
-cupti_correlation_enable
-(
-  cupti_load_callback_t load_callback,
-  cupti_load_callback_t unload_callback
-)
-{
-  cupti_load_callback = load_callback;
-  cupti_unload_callback = unload_callback;
-
-  if (cupti_correlation_callback) {
-    cuptiActivityEnable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-
-    cuptiSubscribe(&cupti_subscriber, 
-		   (CUpti_CallbackFunc) cupti_subscriber_callback,
-		   (void *) NULL);
-
-    cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
-    cuptiEnableDomain(1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
-  }
-}
-
-
-void
-cupti_correlation_disable()
-{
-  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-
-  cuptiUnsubscribe(cupti_subscriber); 
-
-  cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API);
-  cuptiEnableDomain(0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE);
-
-  cupti_load_callback = 0;
-  cupti_unload_callback = 0;
-}
-
-
-//******************************************************************************
-// interface  operations
-//******************************************************************************
-
-void
-cupti_start()
-{
-  cupti_activity_buffer_mgmt_init
-    (cupti_buffer_alloc, cupti_buffer_process_and_free, 0);
-  
-  cupti_activity_dispatch_print_init();
-
-  cupti_correlation_enable(0,0);
-  cupti_set_monitoring(kernel_execution_activities, true);
-  CUPTI_CALL(cuptiActivityRegisterCallbacks, 
-	     (cupti_buffer_alloc, cupti_buffer_process_and_free));
-}
-
-
-void
-cupti_flush()
-{
-  CUPTI_CALL(cuptiActivityFlushAll, (0));
-}
-
-
-void
-cupti_stop()
-{
-  cupti_correlation_disable();
-  cupti_flush();
-}
-
-
-//******************************************************************************
-// extra code  
-//******************************************************************************
-
-#if 0
-static void
-cupti_process_sample
-(
- CUpti_ActivityPCSampling2 *sample,
- void *state
-)
-{
-  printf("source %u, functionId %u, pc 0x%x, corr %u, "
-	 "samples %u, stallreason %s\n",
-	 sample->sourceLocatorId,
-	 sample->functionId,
-	 sample->pcOffset,
-	 sample->correlationId,
-	 sample->samples,
-	 cupti_stall_reason_string(sample->stallReason));
-}
-
-
-static void
-cupti_process_source_locator
-(
- CUpti_ActivitySourceLocator *asl,
- void *state
-)
-{
-  printf("Source Locator Id %d, File %s Line %d\n", 
-	 asl->id, asl->fileName, 
-	 asl->lineNumber);
-}
-
-
-static void
-cupti_process_function
-(
- CUpti_ActivityFunction *af,
- void *state
-)
-{
-  printf("Function Id %u, ctx %u, moduleId %u, functionIndex %u, name %s\n",
-	 af->id,
-	 af->contextId,
-	 af->moduleId,
-	 af->functionIndex,
-	 af->name);
-}
-
-
-static void
-cupti_process_sampling_record_info
-(
- CUpti_ActivityPCSamplingRecordInfo *sri,
- void *state
-)
-{
-  printf("corr %u, totalSamples %llu, droppedSamples %llu\n",
-	 sri->correlationId,
-	 (unsigned long long)sri->totalSamples,
-	 (unsigned long long)sri->droppedSamples);
-}
-
-
-static void
-cupti_process_correlation
-(
- CUpti_ActivityExternalCorrelation *ec,
- void *state
-)
-{
-  state->external_correlation_id = ec->externalId;
-  printf("External CorrelationId %llu\n", ec->externalId);
-}
-
-
-static void
-cupti_process_memcpy
-(
- CUpti_ActivityMemcpy *activity,
- void *state
-)
-{
-}
-
-
-static void
-cupti_process_memcpy2
-(
- CUpti_ActivityMemcpy2 *activity, 
- void *state
-)
-{
-}
-
-
-static void
-cupti_process_memctr
-(
- CUpti_ActivityUnifiedMemoryCounter *activity, 
- void *state
-)
-{
-}
-
-
-static void
-cupti_process_activityAPI
-(
- CUpti_ActivityAPI *activity,
- void *state
-)
-{
-  // case CUPTI_ACTIVITY_KIND_DRIVER:
-  // case CUPTI_ACTIVITY_KIND_KERNEL:
-}
-
-
-static void
-cupti_process_runtime
-(
- CUpti_ActivityEvent *activity, 
- void *state
-)
-{
-}
-
-
-static void
-cupti_process_activity
-(
- CUpti_Activity *activity,
- void *state
-)
-{
-  switch (activity->kind) {
-
-  case CUPTI_ACTIVITY_KIND_SOURCE_LOCATOR:
-    cupti_process_source_locator((CUpti_ActivitySourceLocator *) activity, 
-				 state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_PC_SAMPLING:
-    cupti_process_sample((CUpti_ActivityPCSampling2 *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_PC_SAMPLING_RECORD_INFO:
-    cupti_process_sampling_record_info
-      ((CUpti_ActivityPCSamplingRecordInfo *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_FUNCTION:
-    cupti_process_function((CUpti_ActivityFunction *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION: 
-    cupti_process_correlation((CUpti_ActivityExternalCorrelation *) activity,
-			      state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_MEMCPY: 
-    cupti_process_memcpy((CUpti_ActivityMemcpy *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_MEMCPY2: 
-    cupti_process_memcpy2((CUpti_ActivityMemcpy2 *) activity, state);
-
-  case CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER:
-    cupti_process_memctr((CUpti_ActivityUnifiedMemoryCounter *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_DRIVER:
-  case CUPTI_ACTIVITY_KIND_KERNEL:
-    cupti_process_activityAPI((CUpti_ActivityAPI *) activity, state);
-    break;
-
-  case CUPTI_ACTIVITY_KIND_RUNTIME:
-    cupti_process_runtime((CUpti_ActivityEvent *) activity, state);
-    break;
-
-  default:
-    cupti_process_unknown(activity, state);
-    break;
-  }
-}
-#endif 
 

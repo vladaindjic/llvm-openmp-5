@@ -20,11 +20,11 @@
 #include <cassert>
 #include <map>
 #include <vector>
+#include <atomic>
 
 #include <dlfcn.h>
 
 #include <ompt.h>
-
 
 
 
@@ -39,8 +39,6 @@
 #include "cupti.hpp"
 #include "cuda.hpp"
 #include "ompt-cupti.hpp"
-
-#include "loadmap.cpp"
 
 
 
@@ -118,11 +116,12 @@ public:
   ompt_callback_buffer_complete_t complete_callback;
 
   bool load_handlers_registered;
+  bool paused;
 
   ompt_device_info_t() : 
     initialized(0), relative_id(0), global_id(0), context(0), 
     monitoring_flags_set(0), cupti_state(cupti_tracing_uninitialized),
-    request_callback(0), complete_callback(0), load_handlers_registered(false)
+    request_callback(0), complete_callback(0), load_handlers_registered(false), paused(false)
   {
   };
 }; 
@@ -181,6 +180,8 @@ static const char *ompt_documentation =
 //--------------------------
 // values set by initializer
 //--------------------------
+
+static std::atomic<uint64_t> cupti_active_count(0);
 
 static bool ompt_enabled = false;
 static bool ompt_initialized = false;
@@ -548,10 +549,13 @@ device_completion_callback
   uint8_t *ustart = (uint8_t *) start;
   uint8_t *uend = (uint8_t *) end;
   size_t bytes = uend - ustart;
+
+  ompt_device_info_t *di = ompt_device_info_from_id(relative_device_id);
   if (bytes != 0) {
-    device_info[relative_device_id].complete_callback
-      (device_info[relative_device_id].global_id, (ompt_buffer_t *) ustart, bytes, 
-       (ompt_buffer_cursor_t *) ustart, BUFFER_NOT_OWNED);
+    if (di->paused == false && di->complete_callback)
+      di->complete_callback
+	(di->global_id, (ompt_buffer_t *) ustart, bytes, 
+	 (ompt_buffer_cursor_t *) ustart, BUFFER_NOT_OWNED);
   }
 }
 
@@ -728,24 +732,20 @@ ompt_pause_trace
  int begin_pause
 )
 {
-  bool result = false;
-  int device_id = ompt_device_to_id(device);
+  ompt_device_info_t *di = ompt_device_info(device);
+  bool result = true;
 
   DP("enter ompt_pause_trace(device=%p, begin_pause=%d) device_id=%d\n", 
-     (void *) device, begin_pause, device_id);
+     (void *) device, begin_pause, di->global_id);
 
-  bool set_success = cuda_context_set(device_info[device_id].context);
-  if (set_success) {
-    if (begin_pause) {
-      cupti_stop();
-    } else {
-      CUptiResult cupti_result =
-	cuptiActivityRegisterCallbacks(cupti_buffer_alloc,
-				       cupti_buffer_completion_callback);
+  cupti_trace_flush();
 
-      result = (cupti_result == CUPTI_SUCCESS);
-    }
+  if (cupti_active_count.fetch_add(-1) == 1) {
+    cupti_trace_pause();
   }
+
+  // pause trace delivery for this device
+  di->paused = begin_pause;
 
   DP("exit ompt_pause_trace returns %d\n", result);
 
@@ -761,15 +761,20 @@ ompt_start_trace
  ompt_callback_buffer_complete_t complete
 )
 {
-  int device_id = ompt_device_to_id(device);
+  ompt_device_info_t *di = ompt_device_info(device);
+  bool status;
 
   DP("enter ompt_start_trace(device=%p, request=%p, complete=%p) device_id=%d\n", 
-     (void *) device, fnptr_to_ptr(request), fnptr_to_ptr(complete), device_id);  
+     (void *) device, fnptr_to_ptr(request), fnptr_to_ptr(complete), di->global_id);  
 
-  device_info[device_id].request_callback = request;
-  device_info[device_id].complete_callback = complete;
+  di->request_callback = request;
+  di->complete_callback = complete;
 
-  bool status = ompt_pause_trace(device, 0);
+  cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
+
+  if (cupti_active_count.fetch_add(1) == 0) {
+    status = cupti_trace_start();
+  } 
 
   DP("exit ompt_start_trace returns %d\n", status);
 
@@ -783,7 +788,9 @@ ompt_stop_trace
  ompt_device_t *device
 )
 {
-  return ompt_pause_trace(device, 1);
+  if (cupti_active_count.fetch_add(-1) == 1) {
+    cupti_trace_stop();
+  }
 }
 
 

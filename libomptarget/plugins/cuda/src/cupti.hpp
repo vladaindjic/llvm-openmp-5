@@ -226,10 +226,28 @@ cupti_device_get_timestamp
 );
 
 
-extern void
-cupti_stop
+extern bool 
+cupti_trace_init
 (
+  CUpti_BuffersCallbackRequestFunc buffer_request, 
+  CUpti_BuffersCallbackCompleteFunc buffer_complete
 );
+
+
+extern void
+cupti_trace_flush();
+
+
+extern bool 
+cupti_trace_start();
+
+
+extern bool 
+cupti_trace_pause();
+
+
+extern bool 
+cupti_trace_stop();
 
 
 //===----------------------------------------------------------------------===//
