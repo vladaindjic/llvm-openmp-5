@@ -47,15 +47,18 @@
 //******************************************************************************
 
 #define NO_DEVICE -1
+
 #define DEVICE_TYPE_NCHARS 1024
 
 #define DECLARE_CAST(t, x, y) t *x = (t *) y
+
 
 #define COPY_TIMES(dest, src)			\
   {						\
     dest->start_time = src->start;		\
     dest->end_time = src->end;			\
   }
+
 
 typedef enum {
   cupti_tracing_uninitialized = 0, 
@@ -65,6 +68,7 @@ typedef enum {
   cupti_tracing_finalized = 4
 } cupti_tracing_status_t;
 
+
 #define OMPT_TRACING_OK      4
 #define OMPT_TRACING_FAILED  2
 
@@ -72,6 +76,7 @@ typedef enum {
 #define OMPT_TRACING_SOME  3
 #define OMPT_TRACING_NONE  1
 #define OMPT_TRACING_ERROR 0
+
 
 #define FOREACH_FLAGS(macro)						\
   macro(ompt_native_data_motion_explicit, data_motion_explicit_activities) \
@@ -81,6 +86,7 @@ typedef enum {
   macro(ompt_native_driver, driver_activities)				\
   macro(ompt_native_runtime, runtime_activities)			\
   macro(ompt_native_overhead, overhead_activities)
+
 
 #define FOREACH_TARGET_FN(macro) 		\
   macro(ompt_get_device_time)			\
@@ -95,7 +101,12 @@ typedef enum {
   macro(ompt_get_record_abstract)
 
 
+#define fnptr_to_ptr(x) ((void *) (uint64_t) x)
+
+
 #define ompt_ptr_unknown ((void *) ompt_value_unknown)
+
+
 
 //******************************************************************************
 // types
@@ -151,13 +162,9 @@ private:
 
 typedef ompt_target_id_t (*libomptarget_get_target_info_t)();
 
-typedef CUptiResult (*cupti_enable_disable_fn)
-(
- CUcontext context, 
- CUpti_ActivityKind kind
-);
 
 typedef std::map<int32_t, const char *> device_types_map_t; 
+
 
 typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
 
@@ -307,7 +314,6 @@ ompt_device_get_type
 }
 
 
-#define fnptr_to_ptr(x) ((void *) (uint64_t) x)
 
 static void
 ompt_device_rtl_init
@@ -406,6 +412,7 @@ ompt_abstract_init()
 
 
 static int32_t
+
 ompt_advance_buffer_cursor
 (
  ompt_buffer_t *buffer,
@@ -424,7 +431,8 @@ ompt_advance_buffer_cursor
 
 
 static ompt_record_type_t 
-ompt_get_record_type(
+ompt_get_record_type
+(
   ompt_buffer_t *buffer,
   size_t validSize,
   ompt_buffer_cursor_t current
@@ -537,7 +545,7 @@ ompt_get_record_abstract
 }
 
 
-void
+static void
 device_completion_callback
 (
  uint64_t relative_device_id,
@@ -554,7 +562,7 @@ device_completion_callback
   if (bytes != 0) {
     if (di->paused == false && di->complete_callback)
       di->complete_callback
-	(di->global_id, (ompt_buffer_t *) ustart, bytes, 
+	(di->global_id, (const ompt_buffer_t *) ustart, bytes, 
 	 (ompt_buffer_cursor_t *) ustart, BUFFER_NOT_OWNED);
   }
 }
@@ -615,6 +623,7 @@ ompt_device_unload
   DP("enter ompt_device_unload(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
   if (libomp_callback_device_unload) {
+    cupti_trace_flush();
     libomp_callback_device_unload(code_device_id, module_id);
   }
 }

@@ -584,9 +584,9 @@ OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_request, (
 
 OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
     uint64_t device_id,
-    const ompt_buffer_t *buffer,
+    ompt_buffer_t *buffer,
     size_t bytes,
-    ompt_buffer_cursor_t *begin,
+    ompt_buffer_cursor_t begin,
     int buffer_owned
 ));
 
@@ -622,7 +622,6 @@ OMPT_TARGET_API_FUNCTION(int, ompt_start_trace, (
     ompt_callback_buffer_complete_t complete
 ));
 
-
 OMPT_TARGET_API_FUNCTION(int, ompt_pause_trace, (
     ompt_device_t *device,
     int begin_pause
@@ -637,20 +636,6 @@ OMPT_TARGET_API_FUNCTION(int, ompt_advance_buffer_cursor, (
     size_t size,
     ompt_buffer_cursor_t current,
     ompt_buffer_cursor_t *next
-));
-
-OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_request, (
-    uint64_t device_id,
-    ompt_buffer_t **buffer,
-    size_t *bytes
-));
-
-OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
-    uint64_t device_id,
-    const ompt_buffer_t *buffer,
-    size_t bytes,
-    ompt_buffer_cursor_t *begin,
-    int buffer_owned
 ));
 
 OMPT_TARGET_API_FUNCTION(ompt_record_type_t, ompt_get_record_type, (

@@ -11,6 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 #ifndef __CUPTI_HPP__
+#define __CUPTI_HPP__
+
+
 
 //******************************************************************************
 // include files
@@ -21,59 +24,6 @@
 
 
 //******************************************************************************
-// macros
-//******************************************************************************
-
-#define FOREACH_ACTIVITY_KIND(macro)	\
-  macro(INVALID)			\
-  macro(MEMCPY)				\
-  macro(MEMSET)				\
-  macro(KERNEL)				\
-  macro(DRIVER)				\
-  macro(RUNTIME)			\
-  macro(EVENT)				\
-  macro(METRIC)				\
-  macro(DEVICE)				\
-  macro(CONTEXT)			\
-  macro(CONCURRENT_KERNEL)		\
-  macro(NAME)				\
-  macro(MARKER)				\
-  macro(MARKER_DATA)			\
-  macro(SOURCE_LOCATOR)			\
-  macro(GLOBAL_ACCESS)			\
-  macro(BRANCH)				\
-  macro(OVERHEAD)			\
-  macro(CDP_KERNEL)			\
-  macro(PREEMPTION)			\
-  macro(ENVIRONMENT)			\
-  macro(EVENT_INSTANCE)			\
-  macro(MEMCPY2)			\
-  macro(METRIC_INSTANCE)		\
-  macro(INSTRUCTION_EXECUTION)		\
-  macro(UNIFIED_MEMORY_COUNTER)		\
-  macro(FUNCTION)			\
-  macro(MODULE)				\
-  macro(DEVICE_ATTRIBUTE)		\
-  macro(SHARED_ACCESS)			\
-  macro(PC_SAMPLING)			\
-  macro(PC_SAMPLING_RECORD_INFO)	\
-  macro(INSTRUCTION_CORRELATION)	\
-  macro(OPENACC_DATA)			\
-  macro(OPENACC_LAUNCH)			\
-  macro(OPENACC_OTHER)			\
-  macro(CUDA_EVENT)			\
-  macro(STREAM)				\
-  macro(SYNCHRONIZATION)		\
-  macro(EXTERNAL_CORRELATION)		\
-  macro(NVLINK)				\
-  macro(INSTANTANEOUS_EVENT)		\
-  macro(INSTANTANEOUS_EVENT_INSTANCE)	\
-  macro(INSTANTANEOUS_METRIC)		\
-  macro(INSTANTANEOUS_METRIC_INSTANCE)	\
-  macro(FORCE_INT)
-
-
-//******************************************************************************
 // types
 //******************************************************************************
 
@@ -81,20 +31,6 @@ typedef void (*cupti_correlation_callback_t)
 (
  uint64_t *id
 );
-
-
-typedef void (*cupti_activity_fn_t) 
-(
- CUpti_Activity *activity,
- void *state
-);
-
-
-typedef struct {
-#define macro(kind) cupti_activity_fn_t kind;
-  FOREACH_ACTIVITY_KIND(macro)
-#undef macro
-} cupti_activity_dispatch_t;
 
 
 typedef void (*cupti_load_callback_t)
