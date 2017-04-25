@@ -716,10 +716,6 @@ ompt_set_trace_native
     FOREACH_FLAGS(set_trace);
 #undef set_trace
 
-    if (result & OMPT_TRACING_OK) {
-      ompt_correlation_start(di);
-    }
-
     if (flags == 0) {
       if (result & OMPT_TRACING_OK) {
 	tracing_result = ((result & OMPT_TRACING_FAILED) ? 
@@ -800,8 +796,17 @@ ompt_stop_trace
 )
 {
   if (cupti_active_count.fetch_add(-1) == 1) {
-    cupti_trace_stop();
-  }
+    return cupti_trace_stop();
+  } else {
+    ompt_device_info_t *di = ompt_device_info(device);
+    cupti_trace_flush();
+    // pause trace delivery for this device, which I think is the most that
+    // can be done in this circumstance
+    if (di) {
+      di->paused = 1;
+    }
+    return di ? true : false;
+ }
 }
 
 
@@ -942,6 +947,7 @@ ompt_fini
     if (libomp_callback_device_finalize) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
 	if (device_info[i].initialized) {
+          ompt_correlation_end(&device_info[i]);
 	  ompt_stop_trace(ompt_device_from_id(i));
 	  libomp_callback_device_finalize(device_info[i].global_id); 
 	}
@@ -996,7 +1002,9 @@ ompt_device_init
          ompt_device_lookup,
          ompt_documentation);
     }
+    ompt_correlation_start(&device_info[device_id]);
   }
+
 
   DP("exit ompt_device_init\n");
 }

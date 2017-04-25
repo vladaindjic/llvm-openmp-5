@@ -372,6 +372,29 @@ cupti_error_report
   cupti_error_callback("CUPTI result error", fn, error_string);
 } 
 
+static bool
+cupti_trace_restart
+(
+  cupti_activity_buffer_state_t * cupti_activity_next_state
+)
+{
+  cupti_activity_state = cupti_activity_next_state;
+
+  CUptiResult cupti_result = cuptiActivityRegisterCallbacks
+    (cupti_activity_state->buffer_request, cupti_activity_state->buffer_complete); 
+
+  return (cupti_result == CUPTI_SUCCESS);
+}
+
+
+
+//******************************************************************************
+// interface  operations
+//******************************************************************************
+
+//-------------------------------------------------------------
+// event specification
+//-------------------------------------------------------------
 
 cupti_set_status_t
 cupti_set_monitoring
@@ -399,30 +422,13 @@ cupti_set_monitoring
   return cupti_set_none;
 }
 
-static bool
-cupti_trace_restart
-(
-  cupti_activity_buffer_state_t * cupti_activity_next_state
-)
-{
-  cupti_activity_state = cupti_activity_next_state;
-
-  CUptiResult cupti_result = cuptiActivityRegisterCallbacks
-    (cupti_activity_state->buffer_request, cupti_activity_state->buffer_complete); 
-
-  return (cupti_result == CUPTI_SUCCESS);
-}
-
-
-//******************************************************************************
-// interface  operations
-//******************************************************************************
 
 //-------------------------------------------------------------
 // tracing control 
 //-------------------------------------------------------------
 
-bool cupti_trace_init
+void 
+cupti_trace_init
 (
   CUpti_BuffersCallbackRequestFunc buffer_request, 
   CUpti_BuffersCallbackCompleteFunc buffer_complete

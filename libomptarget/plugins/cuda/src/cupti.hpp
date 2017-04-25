@@ -162,7 +162,7 @@ cupti_device_get_timestamp
 );
 
 
-extern bool 
+extern void 
 cupti_trace_init
 (
   CUpti_BuffersCallbackRequestFunc buffer_request, 
