@@ -496,6 +496,7 @@ ompt_get_record_abstract
 
   case CUPTI_ACTIVITY_KIND_SOURCE_LOCATOR: {
     abs->type = "KERNEL SOURCE LOCATOR";
+    abs->rclass = ompt_record_native_info;
     break;
   }
 
@@ -511,6 +512,7 @@ ompt_get_record_abstract
 
   case CUPTI_ACTIVITY_KIND_FUNCTION: {
     abs->type = "FUNCTION";
+    abs->rclass = ompt_record_native_info;
     break;
   }		
 
