@@ -44,14 +44,16 @@
  | Mandatory Events
  +--------------------------------------------------------------------------*/
 
-#define ompt_event_target_implemented			ompt_event_MAY_ALWAYS
-#define ompt_event_module_implemented			ompt_event_MAY_ALWAYS
-#define ompt_event_map_target_op_implemented		ompt_event_MAY_ALWAYS
-#define ompt_event_device_initialize_implemented	ompt_event_MAY_ALWAYS
-#define ompt_event_device_finalize_implemented	        ompt_event_MAY_ALWAYS
+#define ompt_callback_device_initialize_implemented	ompt_event_MAY_ALWAYS
+#define ompt_callback_device_finalize_implemented	ompt_event_MAY_ALWAYS
 
-#define ompt_event_device_load_implemented	        ompt_event_MAY_ALWAYS
-#define ompt_event_device_unload_implemented	        ompt_event_MAY_ALWAYS
+#define ompt_callback_device_load_implemented	        ompt_event_MAY_ALWAYS
+#define ompt_callback_device_unload_implemented	        ompt_event_MAY_ALWAYS
+
+#define ompt_callback_target_implemented		ompt_event_MAY_ALWAYS
+#define ompt_callback_target_submit_implemented		ompt_event_MAY_ALWAYS
+#define ompt_callback_target_data_op_implemented	ompt_event_MAY_ALWAYS
+#define ompt_callback_target_map_implemented	        ompt_event_MAY_ALWAYS
 
 #define ompt_event_parallel_begin_implemented           ompt_event_MAY_ALWAYS
 #define ompt_event_parallel_end_implemented             ompt_event_MAY_ALWAYS

@@ -46,6 +46,27 @@
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
 
+//******************************************************************************
+// macros
+//******************************************************************************
+
+class OmptCallbackInfo {
+public:
+  OmptCallbackInfo(void *codeptr_ra) {
+    _codeptr = codeptr_ra; 
+    _needCallback = true; 
+  }
+  bool needCallback() { 
+    // need a callback only the first time
+    bool status = _needCallback;
+    _needCallback = false; 
+    return status; 
+  };
+  void *codeptr() { return _codeptr; }
+private:
+  void *_codeptr;
+  bool _needCallback;
+}; 
 
 //******************************************************************************
 // static variables
@@ -107,10 +128,12 @@ libomptarget_debug_wait()
 // FIXME: update to __builtin_frame_address(1) to comply with OpenMP 5.0 spec
 //        when LLVM OpenMP and HPCToolkit are updated
 #define OMPT_TARGET_REGION_BEGIN() \
-  OMPT_CALLBACK(libomp_set_frame_reenter,(__builtin_frame_address(0)))
+  ompt_target_region(ompt_scope_begin); \
+  OMPT_CALLBACK(ompt_set_frame_reenter_fn,(__builtin_frame_address(0)))
 
 #define OMPT_TARGET_REGION_END()   \
-  OMPT_CALLBACK(libomp_set_frame_reenter,(0))
+  ompt_target_region(ompt_scope_end); \
+  OMPT_CALLBACK(ompt_set_frame_reenter_fn,(0))
 
 //----------------------------------------
 // global data
@@ -118,14 +141,18 @@ libomptarget_debug_wait()
 
 static bool ompt_enabled = false;
 
+typedef void (*ompt_set_frame_reenter_t)(void *);  
+typedef ompt_data_t *(*ompt_get_task_data_t)();  
 
-#define libomp_name_decl(fn) \
-  static fn ## _t fn = 0;
+static ompt_set_frame_reenter_t  ompt_set_frame_reenter_fn = 0;
+static ompt_get_task_data_t  ompt_get_task_data_fn = 0;
 
-  FOREACH_OMPT_TARGET_FN(libomp_name_decl)
+#define declare_name(name)			\
+  static name ## _t name ## _fn = 0; 
 
-#undef libomp_name_decl
+FOREACH_OMPT_TARGET_CALLBACK(declare_name)
 
+#undef declare_name
 
 static std::atomic<uint64_t> ompt_target_region_id_ticket(1);
 static std::atomic<uint64_t> ompt_target_region_opid_ticket(1);
@@ -138,8 +165,8 @@ static unsigned int libomp_version_number;
 // thread-private data
 //----------------------------------------
 
-thread_local uint64_t ompt_target_region_id;
-thread_local uint64_t ompt_target_region_opid;
+thread_local uint64_t ompt_target_region_id = 1;
+thread_local uint64_t ompt_target_region_opid = 1;
 
 //----------------------------------------
 // OMPT private operations
@@ -151,15 +178,17 @@ ompt_target_region
  int begin_end
 )
 {
-  uint64_t retval;
-  if (begin_end == ompt_scope_begin) {
-    ompt_target_region_id = ompt_target_region_id_ticket.fetch_add(1);
-    retval = ompt_target_region_id;
-  } else {
-    retval = ompt_target_region_id;
-    ompt_target_region_id = 0;
-  }
-  DP("in ompt_target_region (retval = %lu)\n", retval);
+  uint64_t retval = 0;
+  if (ompt_enabled) {
+    if (begin_end == ompt_scope_begin) {
+      ompt_target_region_id = ompt_target_region_id_ticket.fetch_add(1);
+      retval = ompt_target_region_id;
+    } else {
+      retval = ompt_target_region_id;
+      ompt_target_region_id = 0;
+    }
+    DP("in ompt_target_region (retval = %lu)\n", retval);
+  } 
   return retval;
 }
 
@@ -167,18 +196,22 @@ ompt_target_region
 static void
 ompt_target_operation_begin()
 {
-  ompt_target_region_opid = ompt_target_region_opid_ticket.fetch_add(1);
-  DP("in ompt_target_region_begin (ompt_target_region_opid = %lu)\n", 
-     ompt_target_region_opid);
+  if (ompt_enabled) {
+    ompt_target_region_opid = ompt_target_region_opid_ticket.fetch_add(1);
+    DP("in ompt_target_region_begin (ompt_target_region_opid = %lu)\n", 
+       ompt_target_region_opid);
+  }
 }
 
 
 static void
 ompt_target_operation_end()
 {
-  ompt_target_region_opid = 0;
-  DP("in ompt_target_region_end (ompt_target_region_opid = %lu)\n", 
-     ompt_target_region_opid);
+  if (ompt_enabled) {
+    ompt_target_region_opid = 0;
+    DP("in ompt_target_region_end (ompt_target_region_opid = %lu)\n", 
+       ompt_target_region_opid);
+  }
 }
 
 
@@ -213,13 +246,21 @@ libomptarget_ompt_initialize
 
   ompt_enabled = true;
 
-
 #define ompt_bind_name(fn) \
-  fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fnptr_to_ptr(fn));
+  fn ## _fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fnptr_to_ptr(fn ## _fn));
 
-  FOREACH_OMPT_TARGET_FN(ompt_bind_name)
+  ompt_bind_name(ompt_set_frame_reenter);	
+  ompt_bind_name(ompt_get_task_data);	
 
 #undef ompt_bind_name
+
+#define ompt_bind_callback(fn) \
+  fn ## _fn = (fn ## _t ) lookup(#fn); \
+  DP("%s=%p\n", #fn, fnptr_to_ptr(fn ## _fn));
+
+  FOREACH_OMPT_TARGET_CALLBACK(ompt_bind_callback)
+
+#undef ompt_bind_callback
 
   DP("exit libomptarget_ompt_initialize!\n");
 }
@@ -287,9 +328,9 @@ libomptarget_rtl_fn_lookup
     return (ompt_interface_fn_t) libomptarget_get_target_info;
 
 #define lookup_libomp_fn(fn) \
-  if (strcmp(fname, #fn) == 0) return (ompt_interface_fn_t) fn;
+  if (strcmp(fname, #fn) == 0) return (ompt_interface_fn_t) fn ## _fn;
 
-  FOREACH_OMPT_TARGET_FN(lookup_libomp_fn)
+  FOREACH_OMPT_TARGET_CALLBACK(lookup_libomp_fn)
 
 #undef lookup_libomp_fn
 
@@ -350,7 +391,7 @@ static const char *RTLNames[] = {
 struct RTLInfoTy;
 static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
-    int32_t team_num, int32_t thread_limit, int IsTeamConstruct);
+    int32_t team_num, int32_t thread_limit, int IsTeamConstruct, OmptCallbackInfo &omptCallbackInfo);
 
 /// Map between host data and target data.
 struct HostDataToTargetTy {
@@ -1499,6 +1540,8 @@ EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
 EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
   DP("Unloading target library!\n");
 
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
   RTLsMtx.lock();
   // Find which RTL understands each image, if any.
   for (int32_t i = 0; i < desc->NumDeviceImages; ++i) {
@@ -1532,7 +1575,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
         if (Device.PendingCtorsDtors[desc].PendingCtors.empty()) {
           for (auto &dtor : Device.PendingCtorsDtors[desc].PendingDtors) {
             int rc = target(Device.DeviceID, dtor, 0, NULL, NULL, NULL, NULL, 1,
-                1, true /*team*/);
+			    1, true /*team*/, omptCallbackInfo);
             if (rc != OFFLOAD_SUCCESS) {
               DP("Running destructor " DPxMOD " failed.\n", DPxPTR(dtor));
             }
@@ -1585,7 +1628,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
 }
 
 /// Map global data and execute pending ctors
-static int InitLibrary(DeviceTy& Device) {
+static int InitLibrary(DeviceTy& Device, OmptCallbackInfo &omptCallbackInfo) {
   /*
    * Map global data
    */
@@ -1683,7 +1726,7 @@ static int InitLibrary(DeviceTy& Device) {
         for (auto &entry : lib.second.PendingCtors) {
           void *ctor = entry;
           int rc = target(device_id, ctor, 0, NULL, NULL, NULL,
-                          NULL, 1, 1, true /*team*/);
+                          NULL, 1, 1, true /*team*/, omptCallbackInfo);
           if (rc != OFFLOAD_SUCCESS) {
             DP("Running ctor " DPxMOD " failed.\n", DPxPTR(ctor));
             Device.PendingGlobalsMtx.unlock();
@@ -1704,7 +1747,7 @@ static int InitLibrary(DeviceTy& Device) {
 
 // Check whether a device has been initialized, global ctors have been
 // executed and global data has been mapped; do so if not already done.
-static int CheckDevice(int32_t device_id) {
+static int CheckDevice(int32_t device_id, OmptCallbackInfo &omptCallbackInfo) {
   // Is device ready?
   if (!device_is_ready(device_id)) {
     DP("Device %d is not ready.\n", device_id);
@@ -1718,7 +1761,7 @@ static int CheckDevice(int32_t device_id) {
   Device.PendingGlobalsMtx.lock();
   bool hasPendingGlobals = Device.HasPendingGlobals;
   Device.PendingGlobalsMtx.unlock();
-  if (hasPendingGlobals && InitLibrary(Device) != OFFLOAD_SUCCESS) {
+  if (hasPendingGlobals && InitLibrary(Device, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to init globals on device %d\n", device_id);
     return OFFLOAD_FAIL;
   }
@@ -2085,14 +2128,17 @@ EXTERN void __tgt_target_data_begin(int32_t device_id, int32_t arg_num,
     DP("Use default device id %d\n", device_id);
   }
 
-  if (CheckDevice(device_id) != OFFLOAD_SUCCESS) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
+
+  if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return;
   }
 
   DeviceTy& Device = Devices[device_id];
 
-  OMPT_TARGET_REGION_BEGIN();
 
   // Translate maps
   int32_t new_arg_num;
@@ -2289,14 +2335,16 @@ EXTERN void __tgt_target_data_update(int32_t device_id, int32_t arg_num,
     device_id = omp_get_default_device();
   }
 
-  if (CheckDevice(device_id) != OFFLOAD_SUCCESS) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
+
+  if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return;
   }
 
   DeviceTy& Device = Devices[device_id];
-
-  OMPT_TARGET_REGION_BEGIN();
 
   // process each input.
   for (int32_t i = 0; i < arg_num; ++i) {
@@ -2380,17 +2428,19 @@ EXTERN void __tgt_target_data_update_nowait(
 /// integer different from zero otherwise.
 static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
-    int32_t team_num, int32_t thread_limit, int IsTeamConstruct) {
+    int32_t team_num, int32_t thread_limit, int IsTeamConstruct, OmptCallbackInfo &omptCallbackInfo) {
   DeviceTy &Device = Devices[device_id];
 
-  OMPT_CALLBACK(libomp_callback_target, 
-		(ompt_task_target, 
-		 ompt_scope_begin,
-		 device_id, 
-		 0,  // task data
-		 ompt_target_region_id, 
-		 0 // codeptr_ra
-		 )); 
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id, 
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
 
    // got a new constructor/destructor?
 
@@ -2582,12 +2632,15 @@ EXTERN int __tgt_target(int32_t device_id, void *host_ptr, int32_t arg_num,
     device_id = omp_get_default_device();
   }
 
-  if (CheckDevice(device_id) != OFFLOAD_SUCCESS) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
+
+  if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return OFFLOAD_FAIL;
   }
 
-  OMPT_TARGET_REGION_BEGIN();
 
   // Translate maps
   int32_t new_arg_num;
@@ -2601,7 +2654,7 @@ EXTERN int __tgt_target(int32_t device_id, void *host_ptr, int32_t arg_num,
   //return target(device_id, host_ptr, arg_num, args_base, args, arg_sizes,
   //    arg_types, 0, 0, false /*team*/, false /*recursive*/);
   int rc = target(device_id, host_ptr, new_arg_num, new_args_base, new_args,
-      new_arg_sizes, new_arg_types, 0, 0, false /*team*/);
+		  new_arg_sizes, new_arg_types, 0, 0, false /*team*/, omptCallbackInfo);
 
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
@@ -2640,12 +2693,15 @@ EXTERN int __tgt_target_teams(int32_t device_id, void *host_ptr,
     device_id = omp_get_default_device();
   }
 
-  if (CheckDevice(device_id) != OFFLOAD_SUCCESS) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
+
+  if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return OFFLOAD_FAIL;
   }
 
-  OMPT_TARGET_REGION_BEGIN();
 
   // Translate maps
   int32_t new_arg_num;
@@ -2660,7 +2716,7 @@ EXTERN int __tgt_target_teams(int32_t device_id, void *host_ptr,
   //              arg_types, team_num, thread_limit, true /*team*/,
   //              false /*recursive*/);
   int rc = target(device_id, host_ptr, new_arg_num, new_args_base, new_args,
-      new_arg_sizes, new_arg_types, team_num, thread_limit, true /*team*/);
+		  new_arg_sizes, new_arg_types, team_num, thread_limit, true /*team*/, omptCallbackInfo);
 
   // Cleanup translation memory
   cleanup_map(new_arg_num, new_args_base, new_args, new_arg_sizes,
@@ -2690,7 +2746,9 @@ EXTERN void __kmpc_push_target_tripcount(int32_t device_id,
     device_id = omp_get_default_device();
   }
 
-  if (CheckDevice(device_id) != OFFLOAD_SUCCESS) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return;
   }

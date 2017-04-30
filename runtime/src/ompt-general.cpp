@@ -521,10 +521,8 @@ OMPT_API_ROUTINE int ompt_get_ompt_version()
  * target interface
  ****************************************************************************/
 
-#include "../../libomptarget/src/omptarget-ompt.h"
-
 static void
-libomp_set_frame_reenter
+ompt_set_frame_reenter
 (
   void *addr
 )
@@ -534,127 +532,35 @@ libomp_set_frame_reenter
 }
 
 
-static void
-libomp_callback_target
+static ompt_data_t *
+ompt_get_task_data
 (
-  uint64_t device_num, 
-  uint64_t target_region_id, 
-  ompt_scope_endpoint_t beg_end
 )
 {
-  DP("enter libomp_event_target\n");
-  if (ompt_enabled && ompt_callbacks.ompt_callback(ompt_event_target)) {
-    ompt_task_id_t task_id = __ompt_get_task_id_internal(0);
-
-    // FIXME!
-    void *codeptr_ra = 0;
-    ompt_data_t task_data_dummy = ompt_data_none;
-    ompt_data_t *task_data = &task_data_dummy;
-
-    ompt_callbacks.ompt_callback(ompt_event_target)
-      (ompt_task_target, beg_end, device_num, task_data, target_region_id, codeptr_ra); 
-  }
-  DP("leave libomp_event_target\n");
+  return (ompt_data_t *) 0xdeadbeef;
 }
 
-
-static void
-libomp_callback_device_initialize
-(
-  uint64_t device_num, 
-  const char *type, 
-  ompt_device_t *device,
-  ompt_function_lookup_t lookup,
-  const char *documentation
-)
-{
-  DP("enter libomp_event_device_initialize\n");
-
-  assert(ompt_enabled && 
-	 ompt_callbacks.ompt_callback(ompt_event_device_initialize));
-
-  ompt_callbacks. ompt_callback(ompt_event_device_initialize)
-    (device_num, type, device, lookup, documentation);
-
-  DP("leave libomp_event_device_initialize\n");
-}
-
-
-static void
-libomp_callback_device_finalize
-(
-  uint64_t device_num 
-)
-{
-  DP("enter libomp_event_device_finalize\n");
-
-  assert(ompt_enabled && 
-	 ompt_callbacks.ompt_callback(ompt_event_device_finalize));
-
-  ompt_callbacks.ompt_callback(ompt_event_device_finalize)(device_num);
-
-  DP("leave libomp_event_device_finalize\n");
-}
-
-
-static void
-libomp_callback_device_load
-(
- uint64_t device_num, 
- const char *filename,
- int64_t file_offset,
- void *file_addr,
- void *host_addr,
- void *device_addr,
- uint64_t module_id
-)
-{
-  DP("enter libomp_callback_device_load\n");
-
-  assert(ompt_enabled);
-
-  if (ompt_callbacks.ompt_callback(ompt_event_device_load)) {
-    ompt_callbacks.ompt_callback(ompt_event_device_load)
-      (device_num, filename, file_offset, file_addr, host_addr, device_addr, module_id);
-  }
-
-  DP("leave libomp_callback_device_load\n");
-}
-
-    
-
-static void
-libomp_callback_device_unload
-(
-  uint64_t device_num, 
-  uint64_t module_id
-)
-{
-  DP("enter libomp_callback_device_unload\n");
-
-  assert(ompt_enabled);
-
-  if (ompt_callbacks.ompt_callback(ompt_event_device_unload)) {
-    ompt_callbacks.ompt_callback(ompt_event_device_unload)
-      (device_num, module_id);
-  }
-
-  DP("leave libomp_callback_device_unload\n");
-}
 
 static ompt_interface_fn_t 
 libomp_target_fn_lookup(const char *s)
 {
+   if (strcmp(s, "ompt_set_frame_reenter") == 0) 
+      return (ompt_interface_fn_t) ompt_set_frame_reenter;
+
+   if (strcmp(s, "ompt_get_task_data") == 0) 
+      return (ompt_interface_fn_t) ompt_get_task_data;
 
 #define ompt_interface_fn(fn) \
-    if (strcmp(s, #fn) == 0) return (ompt_interface_fn_t) fn;
+   if (strcmp(s, #fn) == 0) \
+     return (ompt_interface_fn_t) ompt_callbacks.ompt_callback(fn);
 
-    FOREACH_OMPT_TARGET_FN(ompt_interface_fn)
+   FOREACH_OMPT_TARGET_CALLBACK(ompt_interface_fn)
 
 #undef ompt_interface_fn
 
     return (ompt_interface_fn_t) 0;
 }
+
 
 _OMP_EXTERN
 void 
@@ -667,7 +573,7 @@ libomp_libomptarget_ompt_init
   __ompt_force_initialization();
 
   if (ompt_enabled && 
-      ompt_callbacks.ompt_callback(ompt_event_device_initialize)) {
+      ompt_callbacks.ompt_callback(ompt_callback_device_initialize)) {
     if (fns) {
       fns->initialize(libomp_target_fn_lookup, fns); 
       libomptarget_ompt_fns = fns;

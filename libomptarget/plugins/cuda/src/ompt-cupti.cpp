@@ -195,10 +195,14 @@ static bool ompt_initialized = false;
 
 static libomptarget_get_target_info_t        libomptarget_get_target_info;
 
-static ompt_callback_device_initialize_t     libomp_callback_device_initialize;
-static ompt_callback_device_finalize_t       libomp_callback_device_finalize;
-static ompt_callback_device_load_t           libomp_callback_device_load;
-static ompt_callback_device_unload_t         libomp_callback_device_unload;
+
+#define declare_name(name)			\
+  static name ## _t name ## _fn = 0; 
+
+FOREACH_OMPT_TARGET_CALLBACK(declare_name)
+
+#undef declare_name
+
 
 static device_info_t device_info;
 
@@ -331,20 +335,13 @@ ompt_device_rtl_init
 
   DP("libomptarget_get_target_info = %p\n", fnptr_to_ptr(libomptarget_get_target_info));
 
-  libomp_callback_device_initialize = 
-    (ompt_callback_device_initialize_t) lookup("libomp_callback_device_initialize");
+#define ompt_bind_callback(fn) \
+  fn ## _fn = (fn ## _t ) lookup(#fn); \
+  DP("%s=%p\n", #fn, fnptr_to_ptr(fn ## _fn));
 
-  libomp_callback_device_finalize = 
-    (ompt_callback_device_finalize_t) lookup("libomp_callback_device_finalize");
+  FOREACH_OMPT_TARGET_CALLBACK(ompt_bind_callback)
 
-  libomp_callback_device_load = 
-    (ompt_callback_device_load_t) lookup("libomp_callback_device_load");
-
-  libomp_callback_device_unload = 
-    (ompt_callback_device_unload_t) lookup("libomp_callback_device_unload");
-
-
-  DP("libomp_callback_device_initialize = %p\n",  fnptr_to_ptr(libomp_callback_device_initialize));
+#undef ompt_bind_callback
   
   DP("exit ompt_device_rtl_init\n");
 }
@@ -564,8 +561,8 @@ device_completion_callback
   if (bytes != 0) {
     if (di->paused == false && di->complete_callback)
       di->complete_callback
-	(di->global_id, (const ompt_buffer_t *) ustart, bytes, 
-	 (ompt_buffer_cursor_t *) ustart, BUFFER_NOT_OWNED);
+	(di->global_id, (ompt_buffer_t *) ustart, bytes, 
+	 (ompt_buffer_cursor_t) ustart, BUFFER_NOT_OWNED);
   }
 }
 
@@ -624,9 +621,9 @@ ompt_device_unload
 {
   DP("enter ompt_device_unload(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
-  if (libomp_callback_device_unload) {
+  if (ompt_callback_device_unload_fn) {
     cupti_trace_flush();
-    libomp_callback_device_unload(code_device_id, module_id);
+    ompt_callback_device_unload_fn(code_device_id, module_id);
   }
 }
 
@@ -641,8 +638,8 @@ ompt_device_load
 {
   DP("enter ompt_device_load(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
-  if (libomp_callback_device_load) {
-    libomp_callback_device_load
+  if (ompt_callback_device_load_fn) {
+    ompt_callback_device_load_fn
       (code_device_id, code_path, ompt_value_unknown, code_host_addr, 
        ompt_ptr_unknown, ompt_ptr_unknown, module_id);
   }
@@ -944,12 +941,12 @@ ompt_fini
 
   if (ompt_initialized) {
     DP("  cuda finalization activated\n");
-    if (libomp_callback_device_finalize) {
+    if (ompt_callback_device_finalize_fn) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
 	if (device_info[i].initialized) {
           ompt_correlation_end(&device_info[i]);
 	  ompt_stop_trace(ompt_device_from_id(i));
-	  libomp_callback_device_finalize(device_info[i].global_id); 
+	  ompt_callback_device_finalize_fn(device_info[i].global_id); 
 	}
       }
     }
@@ -989,13 +986,13 @@ ompt_device_init
 {
   DP("enter ompt_device_init\n");
 
-  DP("libomp_callback_device_initialize = %p\n", (void *) (uint64_t) libomp_callback_device_initialize);
-  if (libomp_callback_device_initialize) {
+  DP("ompt_callback_device_initialize = %p\n", (void *) (uint64_t) ompt_callback_device_initialize_fn);
+  if (ompt_callback_device_initialize_fn) {
     if (ompt_device_info_init(device_id, omp_device_id, context)) {
 
-      DP("calling libomp_callback_device_initialize\n");
+      DP("calling ompt_callback_device_initialize\n");
 
-      libomp_callback_device_initialize
+      ompt_callback_device_initialize_fn
         (omp_device_id,
          ompt_device_get_type(omp_device_id),
 	 ompt_device_from_id(device_id),

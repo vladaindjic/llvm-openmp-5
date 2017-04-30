@@ -175,11 +175,24 @@
                                                                                                                 \
     macro (ompt_event_task_dependences,         ompt_task_dependences_callback_t, 69) /* report task dependences  */\
     macro (ompt_event_task_dependence_pair,     ompt_task_pair_callback_t,     70) /* report task dependence pair */\
-    macro (ompt_event_target,                   ompt_callback_target_t, 71) /* target region*/\
-    macro (ompt_event_device_initialize,	ompt_callback_device_initialize_t, 72) /* initialize device tracing interface */\
-    macro (ompt_event_device_finalize,		ompt_callback_device_finalize_t, 73) /* finalize device tracing interface */\
-    macro (ompt_event_device_load,		ompt_callback_device_load_t, 74)   /* load code onto a device */\
-    macro (ompt_event_device_unload,		ompt_callback_device_unload_t, 75)   /* load code onto a device */
+    macro (ompt_callback_target,                ompt_callback_target_t,            71) /* target region*/\
+    macro (ompt_callback_device_initialize,	ompt_callback_device_initialize_t, 72) /* initialize device tracing interface */\
+    macro (ompt_callback_device_finalize,	ompt_callback_device_finalize_t,   73) /* finalize device tracing interface */\
+    macro (ompt_callback_device_load,		ompt_callback_device_load_t,       74) /* load device code       */\
+    macro (ompt_callback_device_unload,		ompt_callback_device_unload_t,     75) /* unload device code     */\
+    macro (ompt_callback_target_submit,		ompt_callback_target_submit_t,     76) /* submit device kernel   */\
+    macro (ompt_callback_target_data_op,	ompt_callback_target_data_op_t,    77) /* device data operation  */\
+    macro (ompt_callback_target_map,		ompt_callback_target_map_t,        78) /* device data mapping op */
+
+#define FOREACH_OMPT_TARGET_CALLBACK(macro)					   \
+  macro(ompt_callback_device_initialize)					   \
+  macro(ompt_callback_device_finalize)						   \
+  macro(ompt_callback_device_load)						   \
+  macro(ompt_callback_device_unload)						   \
+  macro(ompt_callback_target)							   \
+  macro(ompt_callback_target_map)						   \
+  macro(ompt_callback_target_data_op)						   \
+  macro(ompt_callback_target_submit)
 
 
 
@@ -273,6 +286,20 @@ typedef uint64_t ompt_buffer_cursor_t;
 
 typedef uint64_t ompt_target_id_t; 
 
+typedef enum ompt_target_type_e {
+    ompt_task_target	        = 1,
+    ompt_task_target_enter_data = 2,
+    ompt_task_target_exit_data  = 3,
+    ompt_task_target_update	= 4
+} ompt_target_type_t;
+
+typedef enum ompt_target_data_op_e {
+  ompt_target_data_alloc              = 1,
+  ompt_target_data_transfer_to_dev    = 2,
+  ompt_target_data_transfer_from_dev  = 3,
+  ompt_target_data_delete             = 4
+} ompt_target_data_op_t;
+
 typedef enum ompt_native_mon_flags_e {
     ompt_native_data_motion_explicit = 1,
     ompt_native_data_motion_implicit = 2,
@@ -289,13 +316,6 @@ typedef enum ompt_record_type_e {
     ompt_record_native  = 2,
     ompt_record_invalid = 3
 } ompt_record_type_t; 
-
-typedef enum ompt_target_type_e {
-    ompt_task_target	        = 1,
-    ompt_task_target_enter_data = 2,
-    ompt_task_target_exit_data  = 3,
-    ompt_task_target_update	= 4
-} ompt_target_type_t;
 
 typedef enum ompt_record_native_kind_e {
   ompt_record_native_info  = 1,
@@ -476,9 +496,11 @@ typedef void (*ompt_control_callback_t) (
     uint64_t modifier                 /* modifier of control call     */
 );
 
+#define ompt_value_unknown (~0ULL) 
+
 /* target */ 
 typedef void (*ompt_callback_device_initialize_t)(
-    int device_id,
+    uint64_t device_id,
     const char *type,
     ompt_device_t *device,
     ompt_function_lookup_t lookup,
@@ -486,34 +508,59 @@ typedef void (*ompt_callback_device_initialize_t)(
 );
 
 typedef void (*ompt_callback_device_finalize_t)(
-    int device_id
+    uint64_t device_id
 );
 
-#define ompt_value_unknown (~0ULL) 
-
 typedef void (*ompt_callback_device_load_t)(
-    int device_id,
+    uint64_t device_num,
     const char *filename,
     int64_t file_offset,
     void *file_addr,
     void *host_addr,
     void *device_addr,
+    uint64_t module_id
+);
+
+typedef void (*ompt_callback_device_unload_t)
+(
+    uint64_t device_num,
     uint64_t module
 );
 
-typedef void (*ompt_callback_device_unload_t)(
-    int device_id,
-    uint64_t module
-);
-
-/* target region */
-typedef void (*ompt_callback_target_t)(
+typedef void (*ompt_callback_target_t)
+(
     ompt_target_type_t kind,
     ompt_scope_endpoint_t endpoint,
     uint64_t device_id,
     ompt_data_t *task_data,
     ompt_target_id_t target_id,
     const void *codeptr_ra
+);
+
+typedef void (*ompt_callback_target_submit_t)
+(
+    ompt_id_t target_id,
+    ompt_id_t host_op_id
+);
+
+typedef void (*ompt_callback_target_data_op_t)
+( 
+    ompt_id_t target_id,
+    ompt_id_t host_op_id,
+    ompt_target_data_op_t optype,
+    void *host_addr, 
+    void *device_addr, 
+    size_t bytes
+);
+
+typedef void (*ompt_callback_target_map_t)
+( 
+    ompt_id_t target_id,
+    unsigned int nitems,
+    void **host_addr,
+    void **device_addr,
+    size_t *bytes,
+    unsigned int *mapping_flags
 );
 
 typedef void (*ompt_callback_t)(void);
@@ -584,9 +631,9 @@ OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_request, (
 
 OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
     uint64_t device_id,
-    const ompt_buffer_t *buffer,
+    ompt_buffer_t *buffer,
     size_t bytes,
-    ompt_buffer_cursor_t *begin,
+    ompt_buffer_cursor_t begin,
     int buffer_owned
 ));
 
@@ -622,7 +669,6 @@ OMPT_TARGET_API_FUNCTION(int, ompt_start_trace, (
     ompt_callback_buffer_complete_t complete
 ));
 
-
 OMPT_TARGET_API_FUNCTION(int, ompt_pause_trace, (
     ompt_device_t *device,
     int begin_pause
@@ -637,20 +683,6 @@ OMPT_TARGET_API_FUNCTION(int, ompt_advance_buffer_cursor, (
     size_t size,
     ompt_buffer_cursor_t current,
     ompt_buffer_cursor_t *next
-));
-
-OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_request, (
-    uint64_t device_id,
-    ompt_buffer_t **buffer,
-    size_t *bytes
-));
-
-OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
-    uint64_t device_id,
-    const ompt_buffer_t *buffer,
-    size_t bytes,
-    ompt_buffer_cursor_t *begin,
-    int buffer_owned
 ));
 
 OMPT_TARGET_API_FUNCTION(ompt_record_type_t, ompt_get_record_type, (
