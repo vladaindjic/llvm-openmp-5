@@ -215,13 +215,6 @@ ompt_target_operation_end()
 }
 
 
-static uint64_t
-ompt_target_operation_id()
-{
-  return ompt_target_region_opid;
-}
-
-
 __attribute__ (( weak ))
 void
 libomp_libomptarget_ompt_init 
@@ -1345,18 +1338,18 @@ __tgt_target_table *DeviceTy::load_binary(__tgt_device_image *Img) {
 void *DeviceTy::data_alloc(int64_t Size) {
   ompt_target_operation_begin();
   void *TgtPtrBegin = RTL->data_alloc(RTLDeviceID, Size);
-  OMPT_CALLBACK(ompt_target_data_op_fn, 
+  OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
-      ompt_target_data_alloc, 0, TgtPtrBegin, Size);
+      ompt_target_data_alloc, 0, TgtPtrBegin, Size));
   ompt_target_operation_end();
   return TgtPtrBegin;
 }
 
 int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
   ompt_target_operation_begin();
-  OMPT_CALLBACK(ompt_target_data_op_fn, 
+  OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
-      ompt_target_data_delete, 0, TgtPtrBegin, 0);
+      ompt_target_data_delete, 0, TgtPtrBegin, 0));
   int32_t result = RTL->data_delete(RTLDeviceID, TgtPtrBegin);
   ompt_target_operation_end();
   return result;
@@ -1367,9 +1360,9 @@ int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
   ompt_target_operation_begin();
-  OMPT_CALLBACK(ompt_target_data_op_fn, 
+  OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
-      ompt_target_data_transfer_to_dev, HstPtrBegin, TgtPtrBegin, Size);
+      ompt_target_data_transfer_to_dev, HstPtrBegin, TgtPtrBegin, Size));
   int32_t result = RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
   ompt_target_operation_end();
   return result;
@@ -1379,9 +1372,9 @@ int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
   ompt_target_operation_begin();
-  OMPT_CALLBACK(ompt_target_data_op_fn, 
+  OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
-      ompt_target_data_transfer_from_dev, HstPtrBegin, TgtPtrBegin, Size);
+      ompt_target_data_transfer_from_dev, HstPtrBegin, TgtPtrBegin, Size));
   int32_t result = RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
   ompt_target_operation_end();
   return result;
@@ -1391,8 +1384,8 @@ int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
 int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize) {
   ompt_target_operation_begin();
-  OMPT_CALLBACK(ompt_target_submit_fn, 
-     (ompt_target_region_id, ompt_target_region_opid);
+  OMPT_CALLBACK(ompt_callback_target_submit_fn, 
+		(ompt_target_region_id, ompt_target_region_opid));
   int32_t result = RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize);
   ompt_target_operation_end();
   return result;
@@ -1403,8 +1396,8 @@ int32_t DeviceTy::run_team_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize, int32_t NumTeams, int32_t ThreadLimit,
     uint64_t LoopTripCount) {
   ompt_target_operation_begin();
-  OMPT_CALLBACK(ompt_target_submit_fn, 
-     (ompt_target_region_id, ompt_target_region_opid);
+  OMPT_CALLBACK(ompt_callback_target_submit_fn, 
+		(ompt_target_region_id, ompt_target_region_opid));
   int32_t result = RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize,
       NumTeams, ThreadLimit, LoopTripCount);
   ompt_target_operation_end();
