@@ -504,6 +504,10 @@ struct DeviceTy {
   int32_t initOnce();
   __tgt_target_table *load_binary(__tgt_device_image *Img);
 
+  // johnmc
+  void *data_alloc(int64_t Size);
+  int32_t data_delete(void *TgtPtr);
+
   int32_t data_submit(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size);
   int32_t data_retrieve(void *HstPtrBegin, void *TgtPtrBegin, int64_t Size);
 
@@ -823,7 +827,7 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
   }
 
   DeviceTy &Device = Devices[device_num];
-  rc = Device.RTL->data_alloc(Device.RTLDeviceID, size);
+  rc = Device.data_alloc(size);
   DP("omp_target_alloc returns device ptr " DPxMOD "\n", DPxPTR(rc));
   return rc;
 }
@@ -849,7 +853,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
   }
 
   DeviceTy &Device = Devices[device_num];
-  Device.RTL->data_delete(Device.RTLDeviceID, (void *)device_ptr);
+  Device.data_delete((void *)device_ptr);
   DP("omp_target_free deallocated device ptr\n");
 }
 
@@ -1213,7 +1217,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
   } else if (Size) {
     // If it is not contained and Size > 0 we should create a new entry for it.
     IsNew = true;
-    uintptr_t tp = (uintptr_t)RTL->data_alloc(RTLDeviceID, Size);
+    uintptr_t tp = (uintptr_t)data_alloc(Size);
     DP("Creating new map entry: HstBase=" DPxMOD ", HstBegin=" DPxMOD ", "
         "HstEnd=" DPxMOD ", TgtBegin=" DPxMOD "\n", DPxPTR(HstPtrBase),
         DPxPTR(HstPtrBegin), DPxPTR((uintptr_t)HstPtrBegin + Size), DPxPTR(tp));
@@ -1284,7 +1288,7 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
       assert(HT.RefCount == 0 && "did not expect a negative ref count");
       DP("Deleting tgt data " DPxMOD " of size %ld\n",
           DPxPTR(HT.TgtPtrBegin), Size);
-      RTL->data_delete(RTLDeviceID, (void *)HT.TgtPtrBegin);
+      data_delete((void *)HT.TgtPtrBegin);
       DP("Removing%s mapping with HstPtrBegin=" DPxMOD ", TgtPtrBegin=" DPxMOD
           ", Size=%ld\n", (ForceDelete ? " (forced)" : ""),
           DPxPTR(HT.HstPtrBegin), DPxPTR(HT.TgtPtrBegin), Size);
@@ -1338,10 +1342,34 @@ __tgt_target_table *DeviceTy::load_binary(__tgt_device_image *Img) {
   return rc;
 }
 
+void *DeviceTy::data_alloc(int64_t Size) {
+  ompt_target_operation_begin();
+  void *TgtPtrBegin = RTL->data_alloc(RTLDeviceID, Size);
+  OMPT_CALLBACK(ompt_target_data_op_fn, 
+     (ompt_target_region_id, ompt_target_region_opid, 
+      ompt_target_data_alloc, 0, TgtPtrBegin, Size);
+  ompt_target_operation_end();
+  return TgtPtrBegin;
+}
+
+int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
+  ompt_target_operation_begin();
+  OMPT_CALLBACK(ompt_target_data_op_fn, 
+     (ompt_target_region_id, ompt_target_region_opid, 
+      ompt_target_data_delete, 0, TgtPtrBegin, 0);
+  int32_t result = RTL->data_delete(RTLDeviceID, TgtPtrBegin);
+  ompt_target_operation_end();
+  return result;
+}
+
+
 // Submit data to device.
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
   ompt_target_operation_begin();
+  OMPT_CALLBACK(ompt_target_data_op_fn, 
+     (ompt_target_region_id, ompt_target_region_opid, 
+      ompt_target_data_transfer_to_dev, HstPtrBegin, TgtPtrBegin, Size);
   int32_t result = RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
   ompt_target_operation_end();
   return result;
@@ -1351,6 +1379,9 @@ int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
   ompt_target_operation_begin();
+  OMPT_CALLBACK(ompt_target_data_op_fn, 
+     (ompt_target_region_id, ompt_target_region_opid, 
+      ompt_target_data_transfer_from_dev, HstPtrBegin, TgtPtrBegin, Size);
   int32_t result = RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
   ompt_target_operation_end();
   return result;
@@ -1360,6 +1391,8 @@ int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
 int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize) {
   ompt_target_operation_begin();
+  OMPT_CALLBACK(ompt_target_submit_fn, 
+     (ompt_target_region_id, ompt_target_region_opid);
   int32_t result = RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize);
   ompt_target_operation_end();
   return result;
@@ -1370,6 +1403,8 @@ int32_t DeviceTy::run_team_region(void *TgtEntryPtr, void **TgtVarsPtr,
     int32_t TgtVarsSize, int32_t NumTeams, int32_t ThreadLimit,
     uint64_t LoopTripCount) {
   ompt_target_operation_begin();
+  OMPT_CALLBACK(ompt_target_submit_fn, 
+     (ompt_target_region_id, ompt_target_region_opid);
   int32_t result = RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtVarsSize,
       NumTeams, ThreadLimit, LoopTripCount);
   ompt_target_operation_end();
@@ -2435,7 +2470,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
     OMPT_CALLBACK(ompt_callback_target_fn, 
 		  (ompt_task_target, 
 		   ompt_scope_begin,
-		   device_id, 
+		   device_id,
 		   ompt_get_task_data_fn(), 
 		   ompt_target_region_id, 
 		   omptCallbackInfo.codeptr()
@@ -2527,8 +2562,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
       TgtPtrBase = HstPtrBase;
     } else if (arg_types[i] & OMP_TGT_MAPTYPE_PRIVATE) {
       // Allocate memory for (first-)private array
-      void *TgtPtrBegin = Device.RTL->data_alloc(Device.RTLDeviceID,
-          arg_sizes[i]);
+      void *TgtPtrBegin = Device.data_alloc(arg_sizes[i]);
       if (!TgtPtrBegin) {
         DP ("Data allocation for %sprivate array " DPxMOD " failed\n",
             (arg_types[i] & OMP_TGT_MAPTYPE_TO ? "first-" : ""),
@@ -2597,7 +2631,7 @@ static int target(int32_t device_id, void *host_ptr, int32_t arg_num,
 
   // Deallocate (first-)private arrays
   for (auto it : fpArrays) {
-    int rt = Device.RTL->data_delete(Device.RTLDeviceID, it);
+    int rt = Device.data_delete(it);
     if (rt != OFFLOAD_SUCCESS) {
       DP("Deallocation of (first-)private arrays failed.\n");
       rc = OFFLOAD_FAIL;
