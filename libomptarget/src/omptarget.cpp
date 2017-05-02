@@ -27,12 +27,10 @@
 
 #include <string.h>
 
+#include <ompt.h>
 
 // Header file global to this project
 #include "omptarget.h"
-
-// Header file for OMPT interface support shared libomp
-#include "omptarget-ompt.h"
 
 #include "loadmap.cpp"
 
@@ -2001,6 +1999,15 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
         new_arg_types[nid], i, new_member_of);
     }
   }
+
+  OMPT_CALLBACK(ompt_callback_target_map_fn, 
+    (ompt_task_target, 
+     new_arg_num,
+     new_args_base, // change the type of this array? or change the callback signature?
+     0, // device address? fixme
+     (size_t *) new_arg_sizes, 
+     (unsigned int *) new_arg_types // mapping flags?
+    )); 
 }
 
 static void cleanup_map(int32_t new_arg_num, void **new_args_base,
