@@ -149,6 +149,7 @@ cupti_pause_trace
 extern cupti_set_status_t 
 cupti_set_monitoring
 (
+ CUcontext context,
  const  CUpti_ActivityKind activity_kinds[],
  bool enable
 );
@@ -171,19 +172,29 @@ cupti_trace_init
 
 
 extern void
-cupti_trace_flush();
+cupti_trace_flush
+(
+ CUcontext context
+);
 
 
 extern bool 
-cupti_trace_start();
-
-
-extern bool 
-cupti_trace_pause();
-
+cupti_trace_start
+(
+ CUcontext context
+);
 
 extern bool 
-cupti_trace_stop();
+cupti_trace_pause
+(
+ CUcontext context
+);
+
+extern bool 
+cupti_trace_stop
+(
+ CUcontext context
+);
 
 
 //===----------------------------------------------------------------------===//

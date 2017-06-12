@@ -215,7 +215,8 @@ static device_info_t device_info;
 thread_local ompt_record_abstract_t ompt_record_abstract;
 thread_local ompt_target_id_t ompt_correlation_id;
 
-thread_local int   code_device_id;
+thread_local int   code_device_global_id;
+thread_local int   code_device_relative_id;
 thread_local const char *code_path;
 thread_local void *code_host_addr;
 
@@ -622,8 +623,10 @@ ompt_device_unload
   DP("enter ompt_device_unload(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_unload_fn) {
-    cupti_trace_flush();
-    ompt_callback_device_unload_fn(code_device_id, module_id);
+    ompt_device_info_t *di = ompt_device_info_from_id(code_device_relative_id);
+    CUcontext context = di->context;
+    cupti_trace_flush(context);
+    ompt_callback_device_unload_fn(code_device_global_id, module_id);
   }
 }
 
@@ -640,7 +643,7 @@ ompt_device_load
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_load_fn) {
     ompt_callback_device_load_fn
-      (code_device_id, code_path, ompt_value_unknown, code_host_addr, 
+      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, 
        ompt_ptr_unknown, ompt_ptr_unknown, module_id);
   }
 }
@@ -692,9 +695,12 @@ ompt_set_trace_native
   if (di->relative_id != NO_DEVICE) {
     int result = 0;
 
+  CUcontext context = di->context;
+
 #define set_trace(flag, activities)					\
     if (flags & flag) {							\
-      int action_result = cupti_set_monitoring(activities, enable);	\
+      int action_result =						\
+        cupti_set_monitoring(context, activities, enable);		\
       switch (action_result) {						\
       case cupti_set_all:						\
 	result |= OMPT_TRACING_OK;					\
@@ -737,15 +743,16 @@ ompt_pause_trace
 )
 {
   ompt_device_info_t *di = ompt_device_info(device);
+  CUcontext context = di->context;
   bool result = true;
 
   DP("enter ompt_pause_trace(device=%p, begin_pause=%d) device_id=%d\n", 
      (void *) device, begin_pause, di->global_id);
 
-  cupti_trace_flush();
+  cupti_trace_flush(context);
 
   if (cupti_active_count.fetch_add(-1) == 1) {
-    cupti_trace_pause();
+    cupti_trace_pause(context);
   }
 
   // pause trace delivery for this device
@@ -766,6 +773,7 @@ ompt_start_trace
 )
 {
   ompt_device_info_t *di = ompt_device_info(device);
+  CUcontext context = di->context;
   bool status;
 
   DP("enter ompt_start_trace(device=%p, request=%p, complete=%p) device_id=%d\n", 
@@ -777,7 +785,7 @@ ompt_start_trace
   cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
 
   if (cupti_active_count.fetch_add(1) == 0) {
-    status = cupti_trace_start();
+    status = cupti_trace_start(context);
   } 
 
   DP("exit ompt_start_trace returns %d\n", status);
@@ -792,11 +800,13 @@ ompt_stop_trace
  ompt_device_t *device
 )
 {
+  ompt_device_info_t *di = ompt_device_info(device);
+  CUcontext context = di->context;
+
   if (cupti_active_count.fetch_add(-1) == 1) {
-    return cupti_trace_stop();
+    return cupti_trace_stop(context);
   } else {
-    ompt_device_info_t *di = ompt_device_info(device);
-    cupti_trace_flush();
+    cupti_trace_flush(context);
     // pause trace delivery for this device, which I think is the most that
     // can be done in this circumstance
     if (di) {
@@ -881,7 +891,8 @@ ompt_binary_load
 {
   ompt_device_info_t *di = ompt_device_info_from_id(device_id);
 
-  code_device_id = di->global_id;
+  code_device_global_id = di->global_id;
+  code_device_relative_id = device_id;
   code_path = load_module; 
   code_host_addr = host_addr;
 }
@@ -897,7 +908,8 @@ ompt_binary_unload
 {
   ompt_device_info_t *di = ompt_device_info_from_id(device_id);
 
-  code_device_id = di->global_id;
+  code_device_global_id = di->global_id;
+  code_device_relative_id = device_id;
   code_path = load_module; 
   code_host_addr = host_addr;
 }

@@ -97,6 +97,7 @@ typedef void (*cupti_dropped_callback_t)
 
 typedef CUptiResult (*cupti_activity_enable_disable_t) 
 (
+ CUcontext context,
  CUpti_ActivityKind activity
 );
 
@@ -375,7 +376,8 @@ cupti_error_report
 static bool
 cupti_trace_restart
 (
-  cupti_activity_buffer_state_t * cupti_activity_next_state
+ CUcontext context,
+ cupti_activity_buffer_state_t * cupti_activity_next_state
 )
 {
   cupti_activity_state = cupti_activity_next_state;
@@ -399,6 +401,7 @@ cupti_trace_restart
 cupti_set_status_t
 cupti_set_monitoring
 (
+ CUcontext context,
  const  CUpti_ActivityKind activity_kinds[],
  bool enable
 )
@@ -406,12 +409,12 @@ cupti_set_monitoring
   int failed = 0;
   int succeeded = 0;
   cupti_activity_enable_disable_t action =
-    (enable ? cuptiActivityEnable : cuptiActivityDisable);	
+    (enable ? cuptiActivityEnableContext : cuptiActivityDisableContext);	
   int i = 0;
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    CUptiResult status = action(activity_kind);
+    CUptiResult status = action(context, activity_kind);
     if (status == CUPTI_SUCCESS) succeeded++;
     else failed++;
   }
@@ -440,37 +443,43 @@ cupti_trace_init
 
 
 void
-cupti_trace_flush()
+cupti_trace_flush
+(
+ CUcontext context
+)
 {
-  CUPTI_CALL(cuptiActivityFlushAll, (0));
+  CUPTI_CALL(cuptiActivityFlushAll, (CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
 }
 
 
 bool 
 cupti_trace_start
 (
+ CUcontext context
 )
 {
-  return cupti_trace_restart(&cupti_activity_enabled);
+  return cupti_trace_restart(context, &cupti_activity_enabled);
 }
 
 
 bool 
 cupti_trace_pause
 (
+ CUcontext context
 )
 {
-  cupti_trace_flush();
-  return cupti_trace_restart(&cupti_activity_disabled);
+  cupti_trace_flush(context);
+  return cupti_trace_restart(context, &cupti_activity_disabled);
 }
 
 
 bool 
 cupti_trace_stop
 (
+ CUcontext context
 )
 {
-  return cupti_trace_pause();
+  return cupti_trace_pause(context);
 }
 
 
