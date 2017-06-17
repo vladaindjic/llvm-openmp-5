@@ -515,9 +515,10 @@ typedef void (*ompt_callback_device_load_t)(
     uint64_t device_num,
     const char *filename,
     int64_t file_offset,
-    void *file_addr,
-    void *host_addr,
-    void *device_addr,
+    const void *file_addr,
+    size_t bytes,
+    const void *host_addr,
+    const void *device_addr,
     uint64_t module_id
 );
 

@@ -281,7 +281,7 @@ typedef int32_t ompt_device_t;
 typedef uint64_t ompt_device_time_t; 
 const ompt_device_time_t ompt_device_time_none = 0;
 
-typedef uint8_t ompt_buffer_t;
+typedef void ompt_buffer_t;
 typedef uint64_t ompt_buffer_cursor_t; 
 
 typedef uint64_t ompt_target_id_t; 
@@ -500,7 +500,7 @@ typedef void (*ompt_control_callback_t) (
 
 /* target */ 
 typedef void (*ompt_callback_device_initialize_t)(
-    uint64_t device_id,
+    uint64_t device_num,
     const char *type,
     ompt_device_t *device,
     ompt_function_lookup_t lookup,
@@ -508,16 +508,17 @@ typedef void (*ompt_callback_device_initialize_t)(
 );
 
 typedef void (*ompt_callback_device_finalize_t)(
-    uint64_t device_id
+    uint64_t device_num
 );
 
 typedef void (*ompt_callback_device_load_t)(
     uint64_t device_num,
     const char *filename,
     int64_t file_offset,
-    void *file_addr,
-    void *host_addr,
-    void *device_addr,
+    const void *file_addr,
+    size_t bytes,
+    const void *host_addr,
+    const void *device_addr,
     uint64_t module_id
 );
 
@@ -531,7 +532,7 @@ typedef void (*ompt_callback_target_t)
 (
     ompt_target_type_t kind,
     ompt_scope_endpoint_t endpoint,
-    uint64_t device_id,
+    uint64_t device_num,
     ompt_data_t *task_data,
     ompt_target_id_t target_id,
     const void *codeptr_ra
@@ -624,13 +625,13 @@ OMPT_API_FUNCTION(ompt_frame_t *, ompt_get_task_frame, (
  ***************************************************************************/
 
 OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_request, (
-    uint64_t device_id,
+    uint64_t device_num,
     ompt_buffer_t **buffer,
     size_t *bytes
 ));
 
 OMPT_TARGET_API_FUNCTION(void, ompt_callback_buffer_complete, (
-    uint64_t device_id,
+    uint64_t device_num,
     ompt_buffer_t *buffer,
     size_t bytes,
     ompt_buffer_cursor_t begin,

@@ -420,7 +420,7 @@ ompt_advance_buffer_cursor
 )
 {
   DECLARE_CAST(CUpti_Activity, cursor, current);
-  bool result = cupti_buffer_cursor_advance(buffer, size, &cursor);
+  bool result = cupti_buffer_cursor_advance((uint8_t *) buffer, size, &cursor);
   if (result) {
     *next = (ompt_buffer_cursor_t) cursor;
   }
@@ -437,7 +437,7 @@ ompt_get_record_type
 )
 {
   DECLARE_CAST(CUpti_Activity, activity, current);
-  return (cupti_buffer_cursor_isvalid(buffer, validSize, activity) ?
+  return (cupti_buffer_cursor_isvalid((uint8_t *) buffer, validSize, activity) ?
 	  ompt_record_native : ompt_record_invalid);
 }
 
@@ -643,8 +643,8 @@ ompt_device_load
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_load_fn) {
     ompt_callback_device_load_fn
-      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, 
-       ompt_ptr_unknown, ompt_ptr_unknown, module_id);
+      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size,
+       cubin, ompt_ptr_unknown, module_id);
   }
 }
 
