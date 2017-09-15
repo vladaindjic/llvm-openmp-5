@@ -255,7 +255,7 @@ cupti_subscriber_callback
 	     mrd->moduleId, mrd->cubinSize, mrd->pCubin);
       DISPATCH_CALLBACK(cupti_unload_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
-  } else if (CUPTI_CB_DOMAIN_DRIVER_API) {
+  } else if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
     if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) ||
 	(cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2) ||
 	(cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)){
