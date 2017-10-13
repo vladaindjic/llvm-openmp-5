@@ -308,6 +308,14 @@ libomptarget_get_target_info
   *target_region_opid = ompt_target_region_opid;
 }
 
+static void
+libomptarget_correlation_callback
+(
+ ompt_target_id_t *target_region_opid
+)
+{
+  *target_region_opid = ompt_target_region_opid;
+}
 
 static ompt_interface_fn_t 
 libomptarget_rtl_fn_lookup
@@ -317,6 +325,9 @@ libomptarget_rtl_fn_lookup
 {
   if (strcmp(fname, "libomptarget_get_target_info") == 0) 
     return (ompt_interface_fn_t) libomptarget_get_target_info;
+
+  if (strcmp(fname, "libomptarget_correlation_callback") == 0) 
+    return (ompt_interface_fn_t) libomptarget_correlation_callback;
 
 #define lookup_libomp_fn(fn) \
   if (strcmp(fname, #fn) == 0) return (ompt_interface_fn_t) fn ## _fn;

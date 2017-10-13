@@ -129,11 +129,14 @@ public:
   bool load_handlers_registered;
   bool paused;
 
+  std::atomic<uint64_t> cupti_active_count;
+
   ompt_device_info_t() : 
     initialized(0), relative_id(0), global_id(0), context(0), 
     monitoring_flags_set(0), cupti_state(cupti_tracing_uninitialized),
-    request_callback(0), complete_callback(0), load_handlers_registered(false), paused(false)
-  {
+    request_callback(0), complete_callback(0),
+    load_handlers_registered(false), paused(false),
+    cupti_active_count(0) {
   };
 }; 
 
@@ -159,12 +162,11 @@ private:
   std::vector<ompt_device_info_t> *data;
 };
 
+typedef void (*libomptarget_get_target_info_t)();
 
-typedef ompt_target_id_t (*libomptarget_get_target_info_t)();
-
+typedef void (*libomptarget_correlation_callback_t)(uint64_t *id);
 
 typedef std::map<int32_t, const char *> device_types_map_t; 
-
 
 typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
 
@@ -188,13 +190,12 @@ static const char *ompt_documentation =
 // values set by initializer
 //--------------------------
 
-static std::atomic<uint64_t> cupti_active_count(0);
 
 static bool ompt_enabled = false;
 static bool ompt_initialized = false;
 
-static libomptarget_get_target_info_t        libomptarget_get_target_info;
-
+static libomptarget_get_target_info_t libomptarget_get_target_info;
+static libomptarget_correlation_callback_t libomptarget_correlation_callback;
 
 #define declare_name(name)			\
   static name ## _t name ## _fn = 0; 
@@ -203,10 +204,7 @@ FOREACH_OMPT_TARGET_CALLBACK(declare_name)
 
 #undef declare_name
 
-
 static device_info_t device_info;
-
-  
 
 //----------------------------------------
 // thread local data
@@ -221,7 +219,6 @@ thread_local const char *code_path;
 thread_local void *code_host_addr;
 
 
-
 //******************************************************************************
 // forward declarations 
 //******************************************************************************
@@ -231,7 +228,6 @@ ompt_stop_trace
 (
  ompt_device_t *device
 );
-
 
 
 //******************************************************************************
@@ -334,7 +330,12 @@ ompt_device_rtl_init
   libomptarget_get_target_info = 
     (libomptarget_get_target_info_t) lookup("libomptarget_get_target_info");
 
+  libomptarget_correlation_callback = 
+    (libomptarget_correlation_callback_t) lookup("libomptarget_correlation_callback");
+
   DP("libomptarget_get_target_info = %p\n", fnptr_to_ptr(libomptarget_get_target_info));
+
+  DP("libomptarget_correlation_callback = %p\n", fnptr_to_ptr(libomptarget_correlation_callback));
 
 #define ompt_bind_callback(fn) \
   fn ## _fn = (fn ## _t ) lookup(#fn); \
@@ -657,7 +658,7 @@ ompt_correlation_start
 {
   bool &load_handlers_registered = di->load_handlers_registered;
   if (!load_handlers_registered) {
-    cupti_correlation_enable(ompt_device_load, ompt_device_unload);
+    cupti_correlation_enable(ompt_device_load, ompt_device_unload, libomptarget_correlation_callback);
     load_handlers_registered = true;
   }
 }
@@ -751,7 +752,7 @@ ompt_pause_trace
 
   cupti_trace_flush(context);
 
-  if (cupti_active_count.fetch_add(-1) == 1) {
+  if (di->cupti_active_count.fetch_add(-1) == 1) {
     cupti_trace_pause(context);
   }
 
@@ -784,7 +785,7 @@ ompt_start_trace
 
   cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
 
-  if (cupti_active_count.fetch_add(1) == 0) {
+  if (di->cupti_active_count.fetch_add(1) == 0) {
     status = cupti_trace_start(context);
   } 
 
@@ -803,7 +804,7 @@ ompt_stop_trace
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
 
-  if (cupti_active_count.fetch_add(-1) == 1) {
+  if (di->cupti_active_count.fetch_add(-1) == 1) {
     return cupti_trace_stop(context);
   } else {
     cupti_trace_flush(context);
@@ -955,11 +956,11 @@ ompt_fini
     DP("  cuda finalization activated\n");
     if (ompt_callback_device_finalize_fn) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
-	if (device_info[i].initialized) {
+        if (device_info[i].initialized) {
           ompt_correlation_end(&device_info[i]);
-	  ompt_stop_trace(ompt_device_from_id(i));
-	  ompt_callback_device_finalize_fn(device_info[i].global_id); 
-	}
+          ompt_stop_trace(ompt_device_from_id(i));
+          ompt_callback_device_finalize_fn(device_info[i].global_id); 
+        }
       }
     }
 
@@ -1007,7 +1008,7 @@ ompt_device_init
       ompt_callback_device_initialize_fn
         (omp_device_id,
          ompt_device_get_type(omp_device_id),
-	 ompt_device_from_id(device_id),
+         ompt_device_from_id(device_id),
          ompt_device_lookup,
          ompt_documentation);
     }

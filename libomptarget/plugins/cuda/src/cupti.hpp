@@ -109,11 +109,12 @@ cupti_buffer_cursor_isvalid
 );
 
 
-void
+extern void
 cupti_correlation_enable
 (
   cupti_load_callback_t load_callback,
-  cupti_load_callback_t unload_callback
+  cupti_load_callback_t unload_callback,
+  cupti_correlation_callback_t callback_fn
 );
 
 
@@ -122,28 +123,12 @@ cupti_correlation_disable
 (
 );
 
-extern void
-cupti_correlation_callback_register
-(
- cupti_correlation_callback_t callback_fn
-);
 
-
-extern void
-cupti_activity_buffer_mgmt_init
-(
-  CUpti_BuffersCallbackRequestFunc buffer_request, 
-  CUpti_BuffersCallbackCompleteFunc buffer_complete,
-  void *buffer_processing_state
-);
-
-
-extern bool
-cupti_pause_trace
-(
- CUcontext context,
- int begin_pause
-);
+//extern void
+//cupti_correlation_callback_register
+//(
+// cupti_correlation_callback_t callback_fn
+//);
 
 
 extern cupti_set_status_t 
@@ -171,7 +156,7 @@ cupti_trace_init
 );
 
 
-extern void
+extern bool
 cupti_trace_flush
 (
  CUcontext context
