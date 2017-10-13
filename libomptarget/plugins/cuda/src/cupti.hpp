@@ -124,13 +124,6 @@ cupti_correlation_disable
 );
 
 
-//extern void
-//cupti_correlation_callback_register
-//(
-// cupti_correlation_callback_t callback_fn
-//);
-
-
 extern cupti_set_status_t 
 cupti_set_monitoring
 (

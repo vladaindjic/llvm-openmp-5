@@ -162,9 +162,7 @@ private:
   std::vector<ompt_device_info_t> *data;
 };
 
-typedef void (*libomptarget_get_target_info_t)();
-
-typedef void (*libomptarget_correlation_callback_t)(uint64_t *id);
+typedef void (*libomptarget_get_target_info_t)(uint64_t *id);
 
 typedef std::map<int32_t, const char *> device_types_map_t; 
 
@@ -195,7 +193,6 @@ static bool ompt_enabled = false;
 static bool ompt_initialized = false;
 
 static libomptarget_get_target_info_t libomptarget_get_target_info;
-static libomptarget_correlation_callback_t libomptarget_correlation_callback;
 
 #define declare_name(name)			\
   static name ## _t name ## _fn = 0; 
@@ -330,12 +327,7 @@ ompt_device_rtl_init
   libomptarget_get_target_info = 
     (libomptarget_get_target_info_t) lookup("libomptarget_get_target_info");
 
-  libomptarget_correlation_callback = 
-    (libomptarget_correlation_callback_t) lookup("libomptarget_correlation_callback");
-
   DP("libomptarget_get_target_info = %p\n", fnptr_to_ptr(libomptarget_get_target_info));
-
-  DP("libomptarget_correlation_callback = %p\n", fnptr_to_ptr(libomptarget_correlation_callback));
 
 #define ompt_bind_callback(fn) \
   fn ## _fn = (fn ## _t ) lookup(#fn); \
@@ -562,9 +554,8 @@ device_completion_callback
   ompt_device_info_t *di = ompt_device_info_from_id(relative_device_id);
   if (bytes != 0) {
     if (di->paused == false && di->complete_callback)
-      di->complete_callback
-	(di->global_id, (ompt_buffer_t *) ustart, bytes, 
-	 (ompt_buffer_cursor_t) ustart, BUFFER_NOT_OWNED);
+      di->complete_callback(di->global_id, (ompt_buffer_t *) ustart, bytes,
+        (ompt_buffer_cursor_t) ustart, BUFFER_NOT_OWNED);
   }
 }
 
@@ -591,10 +582,10 @@ cupti_buffer_completion_callback
       status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
       
       if (activity->kind == CUPTI_ACTIVITY_KIND_CONTEXT) {
-	device_completion_callback(relative_device_id, start, activity);
-	start = activity;
-	DECLARE_CAST(CUpti_ActivityContext, ac, activity);
-	relative_device_id = ac->deviceId;
+        device_completion_callback(relative_device_id, start, activity);
+        start = activity;
+        DECLARE_CAST(CUpti_ActivityContext, ac, activity);
+        relative_device_id = ac->deviceId;
       }
     }
     device_completion_callback(relative_device_id, start, activity);
@@ -658,7 +649,7 @@ ompt_correlation_start
 {
   bool &load_handlers_registered = di->load_handlers_registered;
   if (!load_handlers_registered) {
-    cupti_correlation_enable(ompt_device_load, ompt_device_unload, libomptarget_correlation_callback);
+    cupti_correlation_enable(ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
     load_handlers_registered = true;
   }
 }
@@ -704,32 +695,32 @@ ompt_set_trace_native
         cupti_set_monitoring(context, activities, enable);		\
       switch (action_result) {						\
       case cupti_set_all:						\
-	result |= OMPT_TRACING_OK;					\
-	break;								\
+        result |= OMPT_TRACING_OK;					\
+        break;								\
       case cupti_set_some:						\
-	result |= OMPT_TRACING_OK;					\
+        result |= OMPT_TRACING_OK;					\
       case cupti_set_none:						\
-	result |= OMPT_TRACING_FAILED;					\
-	break;								\
+        result |= OMPT_TRACING_FAILED;					\
+        break;								\
       default:								\
-	assert(0);							\
+        assert(0);							\
       }									\
       flags ^= flag;							\
     } 
-	
+
     FOREACH_FLAGS(set_trace);
 #undef set_trace
 
     if (flags == 0) {
       if (result & OMPT_TRACING_OK) {
-	tracing_result = ((result & OMPT_TRACING_FAILED) ? 
-			  OMPT_TRACING_SOME : OMPT_TRACING_ALL);
+        tracing_result = ((result & OMPT_TRACING_FAILED) ? 
+        OMPT_TRACING_SOME : OMPT_TRACING_ALL);
       } else if (result & OMPT_TRACING_FAILED) {
-	tracing_result = OMPT_TRACING_NONE;
+        tracing_result = OMPT_TRACING_NONE;
       }
     }
   }
-	
+
   DP("exit ompt_set_trace_native returns %d\n", tracing_result); 
 
   return tracing_result; // unhandled flags

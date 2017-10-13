@@ -451,6 +451,8 @@ cupti_trace_start
         CUPTI_CALL(cuptiActivityEnableContext, (context, activity), activity_succ);
         if (activity_succ) {
           it->second = false;
+        } else {
+          return false;
         }
       }
     }
@@ -545,16 +547,6 @@ cupti_correlation_disable()
   cupti_load_callback = 0;
   cupti_unload_callback = 0;
   cupti_correlation_callback = 0;
-}
-
-
-void
-cupti_correlation_callback_register
-(
- cupti_correlation_callback_t callback_fn
-)
-{
-  cupti_correlation_callback = callback_fn;
 }
 
 
