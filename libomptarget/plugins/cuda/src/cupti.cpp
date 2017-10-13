@@ -389,6 +389,8 @@ cupti_set_monitoring
     if (status == CUPTI_SUCCESS) {
       if (enable) {
         cupti_enabled_activities.insert(activity_kind);
+      } else {
+        cupti_paused_activities[activity_kind] = true;
       }
       succeeded++;
     }
@@ -529,8 +531,11 @@ cupti_correlation_enable
 void
 cupti_correlation_disable()
 {
-  cuptiActivityDisable(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-  cupti_enabled_activities.insert(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+  bool succ;
+  CUPTI_CALL(cuptiActivityDisable, (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION), succ);
+  if (succ) {
+    cupti_paused_activities[CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
+  }
 
   cuptiUnsubscribe(cupti_subscriber); 
 
