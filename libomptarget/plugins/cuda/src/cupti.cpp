@@ -195,31 +195,62 @@ runtime_activities[] = {
   CUPTI_ACTIVITY_KIND_INVALID
 };
 
-static std::map<CUcontext, std::map<CUpti_ActivityKind, bool> > cupti_enabled_activities;
 
 
 //******************************************************************************
 // static data
 //******************************************************************************
+//
+static std::map<CUcontext, std::map<CUpti_ActivityKind, bool> > cupti_enabled_activities;
 
-cupti_correlation_callback_t cupti_correlation_callback = 
+static cupti_correlation_callback_t cupti_correlation_callback = 
   cupti_correlation_callback_dummy;
 
 static cupti_error_callback_t cupti_error_callback = 
   cupti_error_callback_dummy;
 
-cupti_activity_buffer_state_t cupti_activity_enabled = { 0, 0 };
-cupti_activity_buffer_state_t cupti_activity_disabled = { 0, 0 };
+static cupti_activity_buffer_state_t cupti_activity_enabled = { 0, 0 };
+static cupti_activity_buffer_state_t cupti_activity_disabled = { 0, 0 };
 
-cupti_activity_buffer_state_t *cupti_activity_state = 
+static cupti_activity_buffer_state_t *cupti_activity_state = 
   &cupti_activity_disabled;
 
-cupti_load_callback_t cupti_load_callback = 0;
+static cupti_load_callback_t cupti_load_callback = 0;
 
-cupti_load_callback_t cupti_unload_callback = 0;
+static cupti_load_callback_t cupti_unload_callback = 0;
 
-CUpti_SubscriberHandle cupti_subscriber;
+static CUpti_SubscriberHandle cupti_subscriber;
 
+
+//******************************************************************************
+// private operations
+//******************************************************************************
+
+static void
+cupti_error_callback_dummy // __attribute__((unused))
+(
+ const char *type, 
+ const char *fn, 
+ const char *error_string
+)
+{
+  std::cerr << type << ": function " << fn
+    << " failed with error " << error_string << std::endl;                       
+  exit(-1);
+} 
+
+
+static void
+cupti_error_report
+(
+ CUptiResult error, 
+ const char *fn
+)
+{
+  const char *error_string;
+  cuptiGetResultString(error, &error_string);
+  cupti_error_callback("CUPTI result error", fn, error_string);
+} 
 
 
 //******************************************************************************
@@ -259,14 +290,15 @@ cupti_subscriber_callback
       uint64_t correlation_id;
       DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
 
+      bool succ;
       if (correlation_id != 0) {
         if (cb_info->callbackSite == CUPTI_API_ENTER) {
-          cuptiActivityPushExternalCorrelationId
-            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id);
+          CUPTI_CALL(cuptiActivityPushExternalCorrelationId,
+            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id), succ);
         }
         if (cb_info->callbackSite == CUPTI_API_EXIT) {
-          cuptiActivityPopExternalCorrelationId
-            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id);
+          CUPTI_CALL(cuptiActivityPopExternalCorrelationId,
+            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id), succ);
         }
       }
     }
@@ -274,6 +306,22 @@ cupti_subscriber_callback
 
   DP("exit cupti_subscriber_callback\n");
 }
+
+
+static void 
+cupti_correlation_callback_dummy // __attribute__((unused))
+(
+ uint64_t *id
+)
+{
+  *id = 0;
+}
+
+
+
+//******************************************************************************
+// interface  operations
+//******************************************************************************
 
 
 bool
@@ -284,25 +332,15 @@ cupti_device_get_timestamp
 )
 {
   uint64_t timestamp;
+  bool succ;
 
-  CUptiResult get_result = cuptiDeviceGetTimestamp(context, &timestamp);
+  CUPTI_CALL(cuptiDeviceGetTimestamp, (context, &timestamp), succ);
 
-  bool time_result = (get_result == CUPTI_SUCCESS);
-
-  if (time_result) {
+  if (succ) {
     *time = timestamp;
   }
 
-  return time_result;
-}
-
-static void 
-cupti_correlation_callback_dummy // __attribute__((unused))
-(
- uint64_t *id
-)
-{
-  *id = 0;
+  return succ;
 }
 
 
@@ -327,42 +365,6 @@ cupti_buffer_alloc
   *maxNumRecords = 0;
 }
 
-
-
-//******************************************************************************
-// private operations
-//******************************************************************************
-
-static void
-cupti_error_callback_dummy // __attribute__((unused))
-(
- const char *type, 
- const char *fn, 
- const char *error_string
-)
-{
-  std::cerr << type << ": function " << fn
-    << " failed with error " << error_string << std::endl;                       
-  exit(-1);
-} 
-
-
-static void
-cupti_error_report
-(
- CUptiResult error, 
- const char *fn
-)
-{
-  const char *error_string;
-  cuptiGetResultString(error, &error_string);
-  cupti_error_callback("CUPTI result error", fn, error_string);
-} 
-
-//******************************************************************************
-// interface  operations
-//******************************************************************************
-
 //-------------------------------------------------------------
 // event specification
 //-------------------------------------------------------------
@@ -383,8 +385,9 @@ cupti_set_monitoring
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    CUptiResult status = action(context, activity_kind);
-    if (status == CUPTI_SUCCESS) {
+    bool succ;
+    CUPTI_CALL(action, (context, activity_kind), succ);
+    if (succ) {
       if (enable) {
         cupti_enabled_activities[context][activity_kind] = true;
       } else {
@@ -508,6 +511,7 @@ cupti_subscribe_callbacks
   if (!succ) {
     return false;
   }
+  return true;
 }
 
 
@@ -529,6 +533,7 @@ cupti_unsubscribe_callbacks
   if (!succ) {
     return false;
   }
+  return true;
 }
 
 
@@ -546,8 +551,12 @@ cupti_correlation_enable
   cupti_correlation_callback = correlation_callback;
 
   if (cupti_correlation_callback) {
-    cuptiActivityEnableContext(context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-    cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
+    bool succ;
+    CUPTI_CALL(cuptiActivityEnableContext,
+      (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION), succ);
+    if (succ) {
+      cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
+    }
   }
 }
 
@@ -582,10 +591,9 @@ cupti_buffer_cursor_advance
  CUpti_Activity **activity
 )
 {
-  bool status;
-  CUptiResult result = cuptiActivityGetNextRecord(buffer, size, activity);
-  status = (result == CUPTI_SUCCESS);
-  return status;
+  bool succ;
+  CUPTI_CALL(cuptiActivityGetNextRecord, (buffer, size, activity), succ);
+  return succ;
 }
 
 

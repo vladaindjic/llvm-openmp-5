@@ -637,7 +637,7 @@ ompt_device_load
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_load_fn) {
     ompt_callback_device_load_fn
-      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size,
+      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size, 
        cubin, ompt_ptr_unknown, module_id);
   }
 }
