@@ -203,6 +203,8 @@ FOREACH_OMPT_TARGET_CALLBACK(declare_name)
 
 static device_info_t device_info;
 
+static std::atomic<uint64_t> cupti_correlation_count;
+
 //----------------------------------------
 // thread local data
 //----------------------------------------
@@ -647,9 +649,12 @@ ompt_correlation_start
  ompt_device_info_t *di
 )
 {
+  if (cupti_correlation_count.fetch_add(1) == 0) {
+    cupti_subscribe_callbacks();
+  }
   bool &load_handlers_registered = di->load_handlers_registered;
   if (!load_handlers_registered) {
-    cupti_correlation_enable(ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
+    cupti_correlation_enable(di->context, ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
     load_handlers_registered = true;
   }
 }
@@ -661,9 +666,12 @@ ompt_correlation_end
  ompt_device_info_t *di
 )
 {
+  if (cupti_correlation_count.fetch_add(-1) == 1) {
+    cupti_unsubscribe_callbacks();
+  }
   bool &load_handlers_registered = di->load_handlers_registered;
   if (load_handlers_registered) {
-    cupti_correlation_disable();
+    cupti_correlation_disable(di->context);
     load_handlers_registered = false;
   }
 }
@@ -744,7 +752,7 @@ ompt_pause_trace
   cupti_trace_flush(context);
 
   if (di->cupti_active_count.fetch_add(-1) == 1) {
-    cupti_trace_pause(context);
+    cupti_trace_pause(context, begin_pause);
   }
 
   // pause trace delivery for this device
