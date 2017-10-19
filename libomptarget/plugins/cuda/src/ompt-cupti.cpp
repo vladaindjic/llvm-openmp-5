@@ -579,7 +579,6 @@ cupti_buffer_completion_callback
 
   // set activity to point to first record
   bool status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
-  DP("enter complete_callback\n");
 
   if (status) { // so far, so good ...
     uint64_t relative_device_id = 0;
@@ -587,6 +586,7 @@ cupti_buffer_completion_callback
     while (status) {
       status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
       
+      DP("activity kind %d\n", activity->kind);
       if (activity->kind == CUPTI_ACTIVITY_KIND_CONTEXT) {
         device_completion_callback(relative_device_id, start, activity);
         start = activity;
@@ -669,6 +669,7 @@ ompt_correlation_start
     cupti_correlation_enable(di->context, ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
     load_handlers_registered = true;
   }
+  DP("exit ompt_correlation_start\n"); 
 }
 
 

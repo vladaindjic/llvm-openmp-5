@@ -151,7 +151,7 @@ data_motion_explicit_activities[] = {
 
 CUpti_ActivityKind
 data_motion_implicit_activities[] = {
-//  CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
+  CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
   CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -164,18 +164,13 @@ kernel_invocation_activities[] = {
 };
 
 
-//CUpti_ActivityKind
-//kernel_execution_activities[] = {
-//  CUPTI_ACTIVITY_KIND_FUNCTION,
-//  CUPTI_ACTIVITY_KIND_PC_SAMPLING,
-//  CUPTI_ACTIVITY_KIND_INVALID
-//};
-
 CUpti_ActivityKind
 kernel_execution_activities[] = {
+  CUPTI_ACTIVITY_KIND_FUNCTION,
   CUPTI_ACTIVITY_KIND_PC_SAMPLING,
   CUPTI_ACTIVITY_KIND_INVALID
 };
+
 
 CUpti_ActivityKind
 overhead_activities[] = {
@@ -294,9 +289,9 @@ cupti_subscriber_callback
 
       if (correlation_id != 0) {
         if (cb_info->callbackSite == CUPTI_API_ENTER) {
-          DP("push correlation_id %ld\n", correlation_id);
           CUPTI_CALL(cuptiActivityPushExternalCorrelationId,
             (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
+          DP("push correlation_id %ld\n", correlation_id);
         }
         if (cb_info->callbackSite == CUPTI_API_EXIT) {
           CUPTI_CALL(cuptiActivityPopExternalCorrelationId,
@@ -380,6 +375,10 @@ cupti_set_monitoring
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
+    if (cupti_enabled_activities[context][activity_kind]) {
+      succeeded++;
+      continue;
+    }
     bool succ = action(context, activity_kind) == CUPTI_SUCCESS;
     if (succ) {
       if (enable) {
@@ -516,6 +515,7 @@ cupti_correlation_enable
     CUPTI_CALL(cuptiActivityEnableContext,
       (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
     cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
+    DP("enable correlation\n");
   }
 }
 
