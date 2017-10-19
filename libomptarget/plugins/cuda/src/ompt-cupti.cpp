@@ -405,7 +405,6 @@ ompt_abstract_init()
 
 
 static int32_t
-
 ompt_advance_buffer_cursor
 (
  ompt_buffer_t *buffer,
@@ -414,6 +413,8 @@ ompt_advance_buffer_cursor
  ompt_buffer_cursor_t *next
 )
 {
+  DP("enter ompt_advance_buffer_cursor(buffer=%p, size=%lu)\n", 
+     buffer, size); 
   DECLARE_CAST(CUpti_Activity, cursor, current);
   bool result = cupti_buffer_cursor_advance((uint8_t *) buffer, size, &cursor);
   if (result) {
@@ -572,10 +573,13 @@ cupti_buffer_completion_callback
  size_t validSize 
 )
 {
+  DP("enter cupti_buffer_completion_callback(buffer=%p, size=%lu, validSize=%lu)\n", 
+     buffer, size, validSize); 
   CUpti_Activity *activity = NULL; // signal advance to return pointer to first record
 
   // set activity to point to first record
   bool status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
+  DP("enter complete_callback\n");
 
   if (status) { // so far, so good ...
     uint64_t relative_device_id = 0;
@@ -592,7 +596,14 @@ cupti_buffer_completion_callback
     }
     device_completion_callback(relative_device_id, start, activity);
   }
+
+  size_t dropped;
+  cupti_get_num_dropped_records(context, streamId, &dropped);
+  if (dropped != 0) {
+    DP("dropped %u activity records\n", (unsigned int) dropped);
+  }   
   free(buffer);
+  DP("leave cupti_buffer_completion_callback\n"); 
 }
 
 
@@ -649,6 +660,7 @@ ompt_correlation_start
  ompt_device_info_t *di
 )
 {
+  DP("enter ompt_correlation_start\n"); 
   if (cupti_correlation_count.fetch_add(1) == 0) {
     cupti_subscribe_callbacks();
   }
@@ -695,7 +707,7 @@ ompt_set_trace_native
   if (di->relative_id != NO_DEVICE) {
     int result = 0;
 
-  CUcontext context = di->context;
+    CUcontext context = di->context;
 
 #define set_trace(flag, activities)					\
     if (flags & flag) {							\
@@ -751,7 +763,8 @@ ompt_pause_trace
 
   cupti_trace_flush(context);
 
-  if (di->cupti_active_count.fetch_add(-1) == 1) {
+  if ((begin_pause && di->cupti_active_count.fetch_add(-1) == 1) ||
+    (!begin_pause && di->cupti_active_count.fetch_add(1) == 0)) {
     cupti_trace_pause(context, begin_pause);
   }
 
@@ -785,10 +798,8 @@ ompt_start_trace
   cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
 
   if (di->cupti_active_count.fetch_add(1) == 0) {
-    status = cupti_trace_start(context);
+    cupti_trace_start(context);
   } 
-
-  DP("exit ompt_start_trace returns %d\n", status);
 
   return status;
 }
@@ -802,11 +813,11 @@ ompt_stop_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
+  cupti_trace_flush(context);
 
   if (di->cupti_active_count.fetch_add(-1) == 1) {
     return cupti_trace_stop(context);
   } else {
-    cupti_trace_flush(context);
     // pause trace delivery for this device, which I think is the most that
     // can be done in this circumstance
     if (di) {
@@ -988,6 +999,8 @@ ompt_device_lookup
 
   return (ompt_interface_fn_t) 0;
 }
+
+
 void
 ompt_device_init
 (

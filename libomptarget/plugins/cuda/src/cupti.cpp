@@ -43,7 +43,7 @@
 #include "rtl.h" 
 
 #undef DP
-#define DP(...)
+#define DP(...) DEBUGP("cupti ", __VA_ARGS__)
 
 
 
@@ -66,14 +66,11 @@
 
 #define CUPTI_ACTIVITY_BUFFER_ALIGNMENT (8)
 
-#define CUPTI_CALL(fn, args, succ) \
+#define CUPTI_CALL(fn, args) \
 {      \
     CUptiResult status = fn args; \
     if (status != CUPTI_SUCCESS) { \
       cupti_error_report(status, #fn); \
-      succ = false; \
-    } else { \
-      succ = true; \
     }\
 }
 
@@ -154,7 +151,7 @@ data_motion_explicit_activities[] = {
 
 CUpti_ActivityKind
 data_motion_implicit_activities[] = {
-  CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
+//  CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
   CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -167,13 +164,18 @@ kernel_invocation_activities[] = {
 };
 
 
+//CUpti_ActivityKind
+//kernel_execution_activities[] = {
+//  CUPTI_ACTIVITY_KIND_FUNCTION,
+//  CUPTI_ACTIVITY_KIND_PC_SAMPLING,
+//  CUPTI_ACTIVITY_KIND_INVALID
+//};
+
 CUpti_ActivityKind
 kernel_execution_activities[] = {
   CUPTI_ACTIVITY_KIND_PC_SAMPLING,
-  CUPTI_ACTIVITY_KIND_FUNCTION,
   CUPTI_ACTIVITY_KIND_INVALID
 };
-
 
 CUpti_ActivityKind
 overhead_activities[] = {
@@ -290,15 +292,16 @@ cupti_subscriber_callback
       uint64_t correlation_id;
       DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
 
-      bool succ;
       if (correlation_id != 0) {
         if (cb_info->callbackSite == CUPTI_API_ENTER) {
+          DP("push correlation_id %ld\n", correlation_id);
           CUPTI_CALL(cuptiActivityPushExternalCorrelationId,
-            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id), succ);
+            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
         }
         if (cb_info->callbackSite == CUPTI_API_EXIT) {
           CUPTI_CALL(cuptiActivityPopExternalCorrelationId,
-            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id), succ);
+            (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id));
+          DP("pop correlation_id %ld\n", correlation_id);
         }
       }
     }
@@ -324,23 +327,14 @@ cupti_correlation_callback_dummy // __attribute__((unused))
 //******************************************************************************
 
 
-bool
+void
 cupti_device_get_timestamp
 (
  CUcontext context,
  uint64_t *time
 )
 {
-  uint64_t timestamp;
-  bool succ;
-
-  CUPTI_CALL(cuptiDeviceGetTimestamp, (context, &timestamp), succ);
-
-  if (succ) {
-    *time = timestamp;
-  }
-
-  return succ;
+  CUPTI_CALL(cuptiDeviceGetTimestamp, (context, time));
 }
 
 
@@ -377,6 +371,7 @@ cupti_set_monitoring
  bool enable
 )
 {
+  DP("enter cupti_set_monitoring\n");
   int failed = 0;
   int succeeded = 0;
   cupti_activity_enable_disable_t action =
@@ -385,13 +380,11 @@ cupti_set_monitoring
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    bool succ;
-    CUPTI_CALL(action, (context, activity_kind), succ);
+    bool succ = action(context, activity_kind) == CUPTI_SUCCESS;
     if (succ) {
       if (enable) {
+        DP("activity %d enabled\n", activity_kind);
         cupti_enabled_activities[context][activity_kind] = true;
-      } else {
-        cupti_enabled_activities[context].erase(activity_kind);
       }
       succeeded++;
     }
@@ -401,6 +394,7 @@ cupti_set_monitoring
     if (failed == 0) return cupti_set_all;
     else return cupti_set_some;
   }
+  DP("leave cupti_set_monitoring\n");
   return cupti_set_none;
 }
 
@@ -421,56 +415,47 @@ cupti_trace_init
 }
 
 
-bool
+void
 cupti_trace_flush
 (
  CUcontext context
 )
 {
-  bool succ;
-  CUPTI_CALL(cuptiActivityFlushAll, (CUPTI_ACTIVITY_FLAG_FLUSH_FORCED), succ);
-  return succ;
+  CUPTI_CALL(cuptiActivityFlushAll, (CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
 }
 
 
-bool 
+void 
 cupti_trace_start
 (
  CUcontext context
 )
 {
-  bool succ;
   *cupti_activity_state = cupti_activity_enabled;
   CUPTI_CALL(cuptiActivityRegisterCallbacks,
-    (cupti_activity_state->buffer_request, cupti_activity_state->buffer_complete), succ); 
-  return succ;
+    (cupti_activity_state->buffer_request, cupti_activity_state->buffer_complete));
 }
 
 
-bool 
+void 
 cupti_trace_pause
 (
  CUcontext context,
  bool begin_pause
 )
 {
-  cupti_trace_flush(context);
   cupti_activity_enable_disable_t action =
     (begin_pause ? cuptiActivityDisableContext : cuptiActivityEnableContext);
   for (auto it = cupti_enabled_activities[context].begin(); it != cupti_enabled_activities[context].end(); ++it) {
     CUpti_ActivityKind activity = it->first;
     bool enabled = it->second;
-    bool activity_succ;
     if (begin_pause == enabled) {
-      CUPTI_CALL(action, (context, activity), activity_succ);
+      bool activity_succ = action(context, activity) == CUPTI_SUCCESS;
       if (activity_succ) {
-        it->second = begin_pause;
-      } else {
-        return false;
+        it->second = !enabled;
       }
     }
   }
-  return true;
 }
 
 
@@ -480,9 +465,8 @@ cupti_trace_stop
  CUcontext context
 )
 {
-  bool succ;
-  cupti_trace_flush(context);
-  CUPTI_CALL(cuptiFinalize, (), succ);
+  bool succ = true;
+  //CUPTI_CALL(cuptiFinalize, (), succ); not supported
   return succ;
 }
 
@@ -491,49 +475,27 @@ cupti_trace_stop
 // correlation callback control 
 //-------------------------------------------------------------
 
-bool
+void
 cupti_subscribe_callbacks
 (
 )
 {
-  bool succ;
   CUPTI_CALL(cuptiSubscribe, (&cupti_subscriber,
     (CUpti_CallbackFunc) cupti_subscriber_callback,
-    (void *) NULL), succ);
-  if (!succ) {
-    return false;
-  }
-  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API), succ);
-  if (!succ) {
-    return false;
-  }
-  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE), succ);
-  if (!succ) {
-    return false;
-  }
-  return true;
+    (void *) NULL));
+  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
 
-bool
+void
 cupti_unsubscribe_callbacks
 (
 )
 {
-  bool succ;
-  CUPTI_CALL(cuptiUnsubscribe, (cupti_subscriber), succ); 
-  if (!succ) {
-    return false;
-  }
-  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API), succ);
-  if (!succ) {
-    return false;
-  }
-  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE), succ);
-  if (!succ) {
-    return false;
-  }
-  return true;
+  CUPTI_CALL(cuptiUnsubscribe, (cupti_subscriber));
+  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
 
@@ -551,12 +513,9 @@ cupti_correlation_enable
   cupti_correlation_callback = correlation_callback;
 
   if (cupti_correlation_callback) {
-    bool succ;
     CUPTI_CALL(cuptiActivityEnableContext,
-      (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION), succ);
-    if (succ) {
-      cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
-    }
+      (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
+    cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
   }
 }
 
@@ -567,11 +526,8 @@ cupti_correlation_disable
  CUcontext context
 )
 {
-  bool succ;
-  CUPTI_CALL(cuptiActivityDisableContext, (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION), succ);
-  if (succ) {
-    cupti_enabled_activities[context].erase(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
-  }
+  CUPTI_CALL(cuptiActivityDisableContext, (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
+  cupti_enabled_activities[context].erase(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
 
   cupti_load_callback = 0;
   cupti_unload_callback = 0;
@@ -591,9 +547,7 @@ cupti_buffer_cursor_advance
  CUpti_Activity **activity
 )
 {
-  bool succ;
-  CUPTI_CALL(cuptiActivityGetNextRecord, (buffer, size, activity), succ);
-  return succ;
+  return cuptiActivityGetNextRecord(buffer, size, activity) == CUPTI_SUCCESS;
 }
 
 
@@ -609,3 +563,13 @@ cupti_buffer_cursor_isvalid
   return cupti_buffer_cursor_advance(buffer, size, &cursor);
 }
 
+void
+cupti_get_num_dropped_records
+(
+ CUcontext context,
+ uint32_t streamId,
+ size_t* dropped 
+)
+{
+  CUPTI_CALL(cuptiActivityGetNumDroppedRecords, (context, streamId, dropped));
+}

@@ -91,13 +91,13 @@ cupti_buffer_alloc
 );
 
 
-extern bool
+extern void
 cupti_subscribe_callbacks
 (
 );
 
 
-extern bool
+extern void
 cupti_unsubscribe_callbacks
 (
 );
@@ -147,7 +147,7 @@ cupti_set_monitoring
 );
 
 
-extern bool
+extern void
 cupti_device_get_timestamp
 (
  CUcontext context,
@@ -163,20 +163,20 @@ cupti_trace_init
 );
 
 
-extern bool
+extern void
 cupti_trace_flush
 (
  CUcontext context
 );
 
 
-extern bool 
+extern void 
 cupti_trace_start
 (
  CUcontext context
 );
 
-extern bool 
+extern void 
 cupti_trace_pause
 (
  CUcontext context,
@@ -189,6 +189,13 @@ cupti_trace_stop
  CUcontext context
 );
 
+extern void
+cupti_get_num_dropped_records
+(
+ CUcontext context,
+ uint32_t streamId,
+ size_t* dropped 
+);
 
 //===----------------------------------------------------------------------===//
 #endif // __CUPTI_HPP__
