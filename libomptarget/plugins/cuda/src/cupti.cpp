@@ -199,6 +199,7 @@ runtime_activities[] = {
 //******************************************************************************
 //
 static std::map<CUcontext, std::map<CUpti_ActivityKind, bool> > cupti_enabled_activities;
+static bool cupti_enabled_correlation = false;
 
 static cupti_correlation_callback_t cupti_correlation_callback = 
   cupti_correlation_callback_dummy;
@@ -511,10 +512,10 @@ cupti_correlation_enable
   cupti_unload_callback = unload_callback;
   cupti_correlation_callback = correlation_callback;
 
-  if (cupti_correlation_callback) {
-    CUPTI_CALL(cuptiActivityEnableContext,
-      (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
-    cupti_enabled_activities[context][CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION] = true;
+  if (!cupti_enabled_correlation && cupti_correlation_callback) {
+    CUPTI_CALL(cuptiActivityEnable,
+      (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
+    cupti_enabled_correlation = true;
     DP("enable correlation\n");
   }
 }
@@ -526,8 +527,11 @@ cupti_correlation_disable
  CUcontext context
 )
 {
-  CUPTI_CALL(cuptiActivityDisableContext, (context, CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
-  cupti_enabled_activities[context].erase(CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION);
+  if (cupti_enabled_correlation) {
+    CUPTI_CALL(cuptiActivityDisable, (CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION));
+    cupti_enabled_correlation = false;
+    DP("stop correlation\n");
+  }
 
   cupti_load_callback = 0;
   cupti_unload_callback = 0;
@@ -562,6 +566,7 @@ cupti_buffer_cursor_isvalid
   CUpti_Activity *cursor = activity;
   return cupti_buffer_cursor_advance(buffer, size, &cursor);
 }
+
 
 void
 cupti_get_num_dropped_records

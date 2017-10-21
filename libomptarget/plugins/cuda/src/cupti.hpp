@@ -176,6 +176,7 @@ cupti_trace_start
  CUcontext context
 );
 
+
 extern void 
 cupti_trace_pause
 (
@@ -183,11 +184,13 @@ cupti_trace_pause
  bool begin_pause
 );
 
+
 extern bool 
 cupti_trace_stop
 (
  CUcontext context
 );
+
 
 extern void
 cupti_get_num_dropped_records

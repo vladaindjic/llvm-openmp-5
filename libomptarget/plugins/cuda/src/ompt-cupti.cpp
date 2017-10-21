@@ -586,7 +586,6 @@ cupti_buffer_completion_callback
     while (status) {
       status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
       
-      DP("activity kind %d\n", activity->kind);
       if (activity->kind == CUPTI_ACTIVITY_KIND_CONTEXT) {
         device_completion_callback(relative_device_id, start, activity);
         start = activity;
