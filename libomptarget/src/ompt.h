@@ -222,7 +222,7 @@ typedef union ompt_data_u {
 } ompt_data_t;
 
 
-const ompt_data_t ompt_data_none = {0};
+static const ompt_data_t ompt_data_none = {0};
 
 
 /*---------------------
@@ -279,7 +279,7 @@ typedef enum ompt_scope_endpoint_e{
 typedef int32_t ompt_device_t; 
 
 typedef uint64_t ompt_device_time_t; 
-const ompt_device_time_t ompt_device_time_none = 0;
+static const ompt_device_time_t ompt_device_time_none = 0;
 
 typedef void ompt_buffer_t;
 typedef uint64_t ompt_buffer_cursor_t; 
@@ -422,7 +422,8 @@ typedef void (*ompt_thread_callback_t) (
 typedef enum {
     ompt_thread_initial = 1, // start the enumeration at 1
     ompt_thread_worker  = 2,
-    ompt_thread_other   = 3
+    ompt_thread_other   = 3,
+    ompt_thread_unknown = 4
 } ompt_thread_type_t;
 
 typedef enum {

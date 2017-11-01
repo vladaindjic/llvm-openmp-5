@@ -129,11 +129,14 @@ public:
   bool load_handlers_registered;
   bool paused;
 
+  std::atomic<uint64_t> cupti_active_count;
+
   ompt_device_info_t() : 
     initialized(0), relative_id(0), global_id(0), context(0), 
     monitoring_flags_set(0), cupti_state(cupti_tracing_uninitialized),
-    request_callback(0), complete_callback(0), load_handlers_registered(false), paused(false)
-  {
+    request_callback(0), complete_callback(0),
+    load_handlers_registered(false), paused(false),
+    cupti_active_count(0) {
   };
 }; 
 
@@ -159,12 +162,9 @@ private:
   std::vector<ompt_device_info_t> *data;
 };
 
-
-typedef ompt_target_id_t (*libomptarget_get_target_info_t)();
-
+typedef void (*libomptarget_get_target_info_t)(uint64_t *id);
 
 typedef std::map<int32_t, const char *> device_types_map_t; 
-
 
 typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
 
@@ -188,13 +188,11 @@ static const char *ompt_documentation =
 // values set by initializer
 //--------------------------
 
-static std::atomic<uint64_t> cupti_active_count(0);
 
 static bool ompt_enabled = false;
 static bool ompt_initialized = false;
 
-static libomptarget_get_target_info_t        libomptarget_get_target_info;
-
+static libomptarget_get_target_info_t libomptarget_get_target_info;
 
 #define declare_name(name)			\
   static name ## _t name ## _fn = 0; 
@@ -203,10 +201,9 @@ FOREACH_OMPT_TARGET_CALLBACK(declare_name)
 
 #undef declare_name
 
-
 static device_info_t device_info;
 
-  
+static std::atomic<uint64_t> cupti_correlation_count;
 
 //----------------------------------------
 // thread local data
@@ -221,7 +218,6 @@ thread_local const char *code_path;
 thread_local void *code_host_addr;
 
 
-
 //******************************************************************************
 // forward declarations 
 //******************************************************************************
@@ -231,7 +227,6 @@ ompt_stop_trace
 (
  ompt_device_t *device
 );
-
 
 
 //******************************************************************************
@@ -410,7 +405,6 @@ ompt_abstract_init()
 
 
 static int32_t
-
 ompt_advance_buffer_cursor
 (
  ompt_buffer_t *buffer,
@@ -419,6 +413,8 @@ ompt_advance_buffer_cursor
  ompt_buffer_cursor_t *next
 )
 {
+  DP("enter ompt_advance_buffer_cursor(buffer=%p, size=%lu)\n", 
+     buffer, size); 
   DECLARE_CAST(CUpti_Activity, cursor, current);
   bool result = cupti_buffer_cursor_advance((uint8_t *) buffer, size, &cursor);
   if (result) {
@@ -561,9 +557,8 @@ device_completion_callback
   ompt_device_info_t *di = ompt_device_info_from_id(relative_device_id);
   if (bytes != 0) {
     if (di->paused == false && di->complete_callback)
-      di->complete_callback
-	(di->global_id, (ompt_buffer_t *) ustart, bytes, 
-	 (ompt_buffer_cursor_t) ustart, BUFFER_NOT_OWNED);
+      di->complete_callback(di->global_id, (ompt_buffer_t *) ustart, bytes,
+        (ompt_buffer_cursor_t) ustart, BUFFER_NOT_OWNED);
   }
 }
 
@@ -578,6 +573,8 @@ cupti_buffer_completion_callback
  size_t validSize 
 )
 {
+  DP("enter cupti_buffer_completion_callback(buffer=%p, size=%lu, validSize=%lu)\n", 
+     buffer, size, validSize); 
   CUpti_Activity *activity = NULL; // signal advance to return pointer to first record
 
   // set activity to point to first record
@@ -590,15 +587,22 @@ cupti_buffer_completion_callback
       status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
       
       if (activity->kind == CUPTI_ACTIVITY_KIND_CONTEXT) {
-	device_completion_callback(relative_device_id, start, activity);
-	start = activity;
-	DECLARE_CAST(CUpti_ActivityContext, ac, activity);
-	relative_device_id = ac->deviceId;
+        device_completion_callback(relative_device_id, start, activity);
+        start = activity;
+        DECLARE_CAST(CUpti_ActivityContext, ac, activity);
+        relative_device_id = ac->deviceId;
       }
     }
     device_completion_callback(relative_device_id, start, activity);
   }
+
+  size_t dropped;
+  cupti_get_num_dropped_records(context, streamId, &dropped);
+  if (dropped != 0) {
+    DP("dropped %u activity records\n", (unsigned int) dropped);
+  }   
   free(buffer);
+  DP("leave cupti_buffer_completion_callback\n"); 
 }
 
 
@@ -643,7 +647,7 @@ ompt_device_load
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_load_fn) {
     ompt_callback_device_load_fn
-      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size,
+      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size, 
        cubin, ompt_ptr_unknown, module_id);
   }
 }
@@ -655,11 +659,16 @@ ompt_correlation_start
  ompt_device_info_t *di
 )
 {
+  DP("enter ompt_correlation_start\n"); 
+  if (cupti_correlation_count.fetch_add(1) == 0) {
+    cupti_subscribe_callbacks();
+  }
   bool &load_handlers_registered = di->load_handlers_registered;
   if (!load_handlers_registered) {
-    cupti_correlation_enable(ompt_device_load, ompt_device_unload);
+    cupti_correlation_enable(di->context, ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
     load_handlers_registered = true;
   }
+  DP("exit ompt_correlation_start\n"); 
 }
 
 
@@ -669,9 +678,12 @@ ompt_correlation_end
  ompt_device_info_t *di
 )
 {
+  if (cupti_correlation_count.fetch_add(-1) == 1) {
+    cupti_unsubscribe_callbacks();
+  }
   bool &load_handlers_registered = di->load_handlers_registered;
   if (load_handlers_registered) {
-    cupti_correlation_disable();
+    cupti_correlation_disable(di->context);
     load_handlers_registered = false;
   }
 }
@@ -695,7 +707,7 @@ ompt_set_trace_native
   if (di->relative_id != NO_DEVICE) {
     int result = 0;
 
-  CUcontext context = di->context;
+    CUcontext context = di->context;
 
 #define set_trace(flag, activities)					\
     if (flags & flag) {							\
@@ -703,32 +715,32 @@ ompt_set_trace_native
         cupti_set_monitoring(context, activities, enable);		\
       switch (action_result) {						\
       case cupti_set_all:						\
-	result |= OMPT_TRACING_OK;					\
-	break;								\
+        result |= OMPT_TRACING_OK;					\
+        break;								\
       case cupti_set_some:						\
-	result |= OMPT_TRACING_OK;					\
+        result |= OMPT_TRACING_OK;					\
       case cupti_set_none:						\
-	result |= OMPT_TRACING_FAILED;					\
-	break;								\
+        result |= OMPT_TRACING_FAILED;					\
+        break;								\
       default:								\
-	assert(0);							\
+        assert(0);							\
       }									\
       flags ^= flag;							\
     } 
-	
+
     FOREACH_FLAGS(set_trace);
 #undef set_trace
 
     if (flags == 0) {
       if (result & OMPT_TRACING_OK) {
-	tracing_result = ((result & OMPT_TRACING_FAILED) ? 
-			  OMPT_TRACING_SOME : OMPT_TRACING_ALL);
+        tracing_result = ((result & OMPT_TRACING_FAILED) ? 
+        OMPT_TRACING_SOME : OMPT_TRACING_ALL);
       } else if (result & OMPT_TRACING_FAILED) {
-	tracing_result = OMPT_TRACING_NONE;
+        tracing_result = OMPT_TRACING_NONE;
       }
     }
   }
-	
+
   DP("exit ompt_set_trace_native returns %d\n", tracing_result); 
 
   return tracing_result; // unhandled flags
@@ -751,8 +763,9 @@ ompt_pause_trace
 
   cupti_trace_flush(context);
 
-  if (cupti_active_count.fetch_add(-1) == 1) {
-    cupti_trace_pause(context);
+  if ((begin_pause && di->cupti_active_count.fetch_add(-1) == 1) ||
+    (!begin_pause && di->cupti_active_count.fetch_add(1) == 0)) {
+    cupti_trace_pause(context, begin_pause);
   }
 
   // pause trace delivery for this device
@@ -784,11 +797,9 @@ ompt_start_trace
 
   cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
 
-  if (cupti_active_count.fetch_add(1) == 0) {
-    status = cupti_trace_start(context);
+  if (di->cupti_active_count.fetch_add(1) == 0) {
+    cupti_trace_start(context);
   } 
-
-  DP("exit ompt_start_trace returns %d\n", status);
 
   return status;
 }
@@ -802,11 +813,11 @@ ompt_stop_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
+  cupti_trace_flush(context);
 
-  if (cupti_active_count.fetch_add(-1) == 1) {
+  if (di->cupti_active_count.fetch_add(-1) == 1) {
     return cupti_trace_stop(context);
   } else {
-    cupti_trace_flush(context);
     // pause trace delivery for this device, which I think is the most that
     // can be done in this circumstance
     if (di) {
@@ -955,11 +966,11 @@ ompt_fini
     DP("  cuda finalization activated\n");
     if (ompt_callback_device_finalize_fn) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
-	if (device_info[i].initialized) {
+        if (device_info[i].initialized) {
           ompt_correlation_end(&device_info[i]);
-	  ompt_stop_trace(ompt_device_from_id(i));
-	  ompt_callback_device_finalize_fn(device_info[i].global_id); 
-	}
+          ompt_stop_trace(ompt_device_from_id(i));
+          ompt_callback_device_finalize_fn(device_info[i].global_id); 
+        }
       }
     }
 
@@ -988,6 +999,8 @@ ompt_device_lookup
 
   return (ompt_interface_fn_t) 0;
 }
+
+
 void
 ompt_device_init
 (
@@ -1007,7 +1020,7 @@ ompt_device_init
       ompt_callback_device_initialize_fn
         (omp_device_id,
          ompt_device_get_type(omp_device_id),
-	 ompt_device_from_id(device_id),
+         ompt_device_from_id(device_id),
          ompt_device_lookup,
          ompt_documentation);
     }

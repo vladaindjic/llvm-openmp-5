@@ -91,6 +91,18 @@ cupti_buffer_alloc
 );
 
 
+extern void
+cupti_subscribe_callbacks
+(
+);
+
+
+extern void
+cupti_unsubscribe_callbacks
+(
+);
+
+
 extern bool
 cupti_buffer_cursor_advance
 (
@@ -109,40 +121,20 @@ cupti_buffer_cursor_isvalid
 );
 
 
-void
+extern void
 cupti_correlation_enable
 (
-  cupti_load_callback_t load_callback,
-  cupti_load_callback_t unload_callback
+ CUcontext context,
+ cupti_load_callback_t load_callback,
+ cupti_load_callback_t unload_callback,
+ cupti_correlation_callback_t callback_fn
 );
 
 
 extern void
 cupti_correlation_disable
 (
-);
-
-extern void
-cupti_correlation_callback_register
-(
- cupti_correlation_callback_t callback_fn
-);
-
-
-extern void
-cupti_activity_buffer_mgmt_init
-(
-  CUpti_BuffersCallbackRequestFunc buffer_request, 
-  CUpti_BuffersCallbackCompleteFunc buffer_complete,
-  void *buffer_processing_state
-);
-
-
-extern bool
-cupti_pause_trace
-(
- CUcontext context,
- int begin_pause
+ CUcontext context
 );
 
 
@@ -155,7 +147,7 @@ cupti_set_monitoring
 );
 
 
-extern bool
+extern void
 cupti_device_get_timestamp
 (
  CUcontext context,
@@ -166,8 +158,8 @@ cupti_device_get_timestamp
 extern void 
 cupti_trace_init
 (
-  CUpti_BuffersCallbackRequestFunc buffer_request, 
-  CUpti_BuffersCallbackCompleteFunc buffer_complete
+ CUpti_BuffersCallbackRequestFunc buffer_request, 
+ CUpti_BuffersCallbackCompleteFunc buffer_complete
 );
 
 
@@ -178,17 +170,20 @@ cupti_trace_flush
 );
 
 
-extern bool 
+extern void 
 cupti_trace_start
 (
  CUcontext context
 );
 
-extern bool 
+
+extern void 
 cupti_trace_pause
 (
- CUcontext context
+ CUcontext context,
+ bool begin_pause
 );
+
 
 extern bool 
 cupti_trace_stop
@@ -196,6 +191,14 @@ cupti_trace_stop
  CUcontext context
 );
 
+
+extern void
+cupti_get_num_dropped_records
+(
+ CUcontext context,
+ uint32_t streamId,
+ size_t* dropped 
+);
 
 //===----------------------------------------------------------------------===//
 #endif // __CUPTI_HPP__
