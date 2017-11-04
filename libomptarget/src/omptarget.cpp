@@ -1998,7 +1998,7 @@ static void translate_map(int32_t arg_num, void **args_base, void **args,
   }
 
   OMPT_CALLBACK(ompt_callback_target_map_fn, 
-    (ompt_task_target, 
+    (ompt_target_region_id, 
      new_arg_num,
      new_args_base, // change the type of this array? or change the callback signature?
      0, // device address? fixme
