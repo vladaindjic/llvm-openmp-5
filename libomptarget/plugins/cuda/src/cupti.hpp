@@ -166,7 +166,6 @@ cupti_trace_init
 extern void
 cupti_trace_flush
 (
- CUcontext context
 );
 
 

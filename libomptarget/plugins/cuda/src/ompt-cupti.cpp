@@ -629,7 +629,7 @@ ompt_device_unload
   if (ompt_callback_device_unload_fn) {
     ompt_device_info_t *di = ompt_device_info_from_id(code_device_relative_id);
     CUcontext context = di->context;
-    cupti_trace_flush(context);
+    cupti_trace_flush();
     ompt_callback_device_unload_fn(code_device_global_id, module_id);
   }
 }
@@ -761,7 +761,7 @@ ompt_pause_trace
   DP("enter ompt_pause_trace(device=%p, begin_pause=%d) device_id=%d\n", 
      (void *) device, begin_pause, di->global_id);
 
-  cupti_trace_flush(context);
+  cupti_trace_flush();
 
   if ((begin_pause && di->cupti_active_count.fetch_add(-1) == 1) ||
     (!begin_pause && di->cupti_active_count.fetch_add(1) == 0)) {
@@ -813,7 +813,7 @@ ompt_stop_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  cupti_trace_flush(context);
+  cupti_trace_flush();
 
   if (di->cupti_active_count.fetch_add(-1) == 1) {
     return cupti_trace_stop(context);
@@ -824,7 +824,7 @@ ompt_stop_trace
       di->paused = 1;
     }
     return di ? true : false;
- }
+  }
 }
 
 

@@ -301,6 +301,35 @@ cupti_subscriber_callback
         }
       }
     }
+  } else if (domain == CUPTI_CB_DOMAIN_RUNTIME_API) { 
+    uint64_t correlation_id;
+    switch (cb_id) {
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_ptsz_v7000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_ptsz_v7000:
+      #if CUPTI_API_VERSION == 10
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_v9000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_ptsz_v9000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernelMultiDevice_v9000:  
+      #endif
+      {
+        DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
+        if (correlation_id != 0) {
+          if (cb_info->callbackSite == CUPTI_API_ENTER) {
+            DP("Runtime push externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
+            CUPTI_CALL(cuptiActivityPushExternalCorrelationId, (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
+          }
+          if (cb_info->callbackSite == CUPTI_API_EXIT) {
+            CUPTI_CALL(cuptiActivityPopExternalCorrelationId, (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id));
+            DP("Runtime pop externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   DP("exit cupti_subscriber_callback\n");
@@ -418,7 +447,6 @@ cupti_trace_init
 void
 cupti_trace_flush
 (
- CUcontext context
 )
 {
   CUPTI_CALL(cuptiActivityFlushAll, (CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
@@ -484,6 +512,7 @@ cupti_subscribe_callbacks
     (CUpti_CallbackFunc) cupti_subscriber_callback,
     (void *) NULL));
   CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
   CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
@@ -495,6 +524,7 @@ cupti_unsubscribe_callbacks
 {
   CUPTI_CALL(cuptiUnsubscribe, (cupti_subscriber));
   CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
   CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
