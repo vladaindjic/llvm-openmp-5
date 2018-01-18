@@ -45,16 +45,49 @@ EXTERN void __kmpc_barrier(kmp_Indent *loc_ref, int32_t tid) {
   omptarget_nvptx_TaskDescr *currTaskDescr =
       omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(tid);
   if (!currTaskDescr->InL2OrHigherParallelRegion()) {
-    int numberOfActiveOMPThreads = GetNumberOfOmpThreads(tid);
-    // The #threads parameter must be rounded up to the warpSize.
-    int threads = warpSize * ((numberOfActiveOMPThreads + warpSize - 1) / warpSize);
+    int numberOfActiveOMPThreads = GetNumberOfOmpThreads(tid, isSPMDMode(), isRuntimeUninitialized());
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+    // On Volta and newer architectures we require that all lanes in
+    // a warp (at least, all present for the kernel launch) participate in the
+    // barrier.  This is enforced when launching the parallel region.  An
+    // exception is when there are < warpSize workers.  In this case only 1 worker
+    // is started, so we don't need a barrier.
+    if (numberOfActiveOMPThreads > 1) {
+#endif
+      // The #threads parameter must be rounded up to the warpSize.
+      int threads = warpSize * ((numberOfActiveOMPThreads + warpSize - 1) / warpSize);
 
-    PRINT(LD_SYNC, "call kmpc_barrier with %d omp threads, sync parameter %d\n",
-          numberOfActiveOMPThreads, threads);
-    // Barrier #1 is for synchronization among active threads.
-    named_sync(L1_BARRIER, threads);
+      PRINT(LD_SYNC, "call kmpc_barrier with %d omp threads, sync parameter %d\n",
+            numberOfActiveOMPThreads, threads);
+      // Barrier #1 is for synchronization among active threads.
+      named_sync(L1_BARRIER, threads);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+    } // numberOfActiveOMPThreads > 1
+#endif
   }
   PRINT0(LD_SYNC, "completed kmpc_barrier\n");
+}
+
+// Emit a simple barrier call in SPMD mode.  Assumes the caller is in an L0 parallel
+// region and that all worker threads participate.
+EXTERN void __kmpc_barrier_simple_spmd(kmp_Indent *loc_ref, int32_t tid) {
+  PRINT0(LD_SYNC, "call kmpc_barrier_simple_spmd\n");
+  __syncthreads();
+  PRINT0(LD_SYNC, "completed kmpc_barrier_simple_spmd\n");
+}
+
+// Emit a simple barrier call in Generic mode.  Assumes the caller is in an L0 parallel
+// region and that all worker threads participate.
+EXTERN void __kmpc_barrier_simple_generic(kmp_Indent *loc_ref, int32_t tid) {
+  int numberOfActiveOMPThreads = GetNumberOfThreadsInBlock() - warpSize;
+  // The #threads parameter must be rounded up to the warpSize.
+  int threads = warpSize * ((numberOfActiveOMPThreads + warpSize - 1) / warpSize);
+
+  PRINT(LD_SYNC, "call kmpc_barrier_simple_generic with %d omp threads, sync parameter %d\n",
+        numberOfActiveOMPThreads, threads);
+  // Barrier #1 is for synchronization among active threads.
+  named_sync(L1_BARRIER, threads);
+  PRINT0(LD_SYNC, "completed kmpc_barrier_simple_generic\n");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,7 +97,7 @@ EXTERN void __kmpc_barrier(kmp_Indent *loc_ref, int32_t tid) {
 INLINE int32_t IsMaster() {
   // only the team master updates the state
   int tid = GetLogicalThreadIdInBlock();
-  int ompThreadId = GetOmpThreadId(tid);
+  int ompThreadId = GetOmpThreadId(tid, isSPMDMode(), isRuntimeUninitialized());
   return IsTeamMaster(ompThreadId);
 }
 
@@ -110,5 +143,5 @@ EXTERN void __kmpc_flush(kmp_Indent *loc) {
 
 EXTERN int32_t __kmpc_warp_active_thread_mask() {
   PRINT0(LD_IO, "call __kmpc_warp_active_thread_mask\n");
-  return __ballot(true);
+  return __ACTIVEMASK();
 }

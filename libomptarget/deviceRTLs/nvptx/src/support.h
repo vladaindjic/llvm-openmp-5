@@ -12,14 +12,25 @@
 //===----------------------------------------------------------------------===//
 
 ////////////////////////////////////////////////////////////////////////////////
-// Mode of Operation
+// Execution Parameters
 ////////////////////////////////////////////////////////////////////////////////
-INLINE void setGenericMode();
+enum ExecutionMode {
+  Generic = 0x00u,
+  Spmd = 0x01u,
+  ModeMask = 0x01u,
+};
+
+enum RuntimeMode {
+  RuntimeInitialized = 0x00u,
+  RuntimeUninitialized = 0x02u,
+  RuntimeMask = 0x02u,
+};
+
+INLINE void setExecutionParameters(ExecutionMode EMode, RuntimeMode RMode);
 INLINE bool isGenericMode();
-INLINE void setSPMDMode();
 INLINE bool isSPMDMode();
-INLINE void setNoOMPMode();
-INLINE bool isNoOMPMode();
+INLINE bool isRuntimeUninitialized();
+INLINE bool isRuntimeInitialized();
 
 ////////////////////////////////////////////////////////////////////////////////
 // get info from machine
@@ -37,11 +48,13 @@ INLINE int GetMasterThreadID();
 INLINE int GetNumberOfWorkersInTeam();
 
 // get OpenMP thread and team ids
-INLINE int GetOmpThreadId(int threadId); // omp_thread_num
+INLINE int GetOmpThreadId(int threadId, bool isSPMDExecutionMode,
+                          bool isRuntimeUninitialized); // omp_thread_num
 INLINE int GetOmpTeamId();               // omp_team_num
 
 // get OpenMP number of threads and team
-INLINE int GetNumberOfOmpThreads(int threadId); // omp_num_threads
+INLINE int GetNumberOfOmpThreads(int threadId, bool isSPMDExecutionMode,
+                                 bool isRuntimeUninitialized); // omp_num_threads
 INLINE int GetNumberOfOmpTeams();               // omp_num_teams
 
 // get OpenMP number of procs
@@ -69,3 +82,10 @@ INLINE unsigned long PadBytes(unsigned long size, unsigned long alignment);
 // Named Barrier Routines
 ////////////////////////////////////////////////////////////////////////////////
 INLINE void named_sync(const int barrier, const int num_threads);
+
+////////////////////////////////////////////////////////////////////////////////
+// Teams Reduction Scratchpad Helpers
+////////////////////////////////////////////////////////////////////////////////
+INLINE unsigned int *GetTeamsReductionTimestamp();
+INLINE char *GetTeamsReductionScratchpad();
+INLINE void SetTeamsReductionScratchpadPtr(void *ScratchpadPtr);

@@ -12,40 +12,28 @@
 //===----------------------------------------------------------------------===//
 
 ////////////////////////////////////////////////////////////////////////////////
-// Mode of Operation
+// Execution Parameters
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
-enum EXECUTION_MODE {
-  GENERIC = 0,
-  SPMD = 1,
-  NO_OMP = 2,
-};
-};
-
-INLINE void setGenericMode() {
-  execution_mode = GENERIC;
+INLINE void setExecutionParameters(ExecutionMode EMode, RuntimeMode RMode) {
+  execution_param = EMode;
+  execution_param |= RMode;
 }
 
 INLINE bool isGenericMode() {
-  return execution_mode == GENERIC;
-}
-
-INLINE void setSPMDMode() {
-  execution_mode = SPMD;
+  return (execution_param & ModeMask) == Generic;
 }
 
 INLINE bool isSPMDMode() {
-  return execution_mode == SPMD;
+  return (execution_param & ModeMask) == Spmd;
 }
 
-INLINE void setNoOMPMode() {
-  // Minimal OMP mode.  Will not have OMP state.
-  execution_mode = NO_OMP;
+INLINE bool isRuntimeUninitialized() {
+  return (execution_param & RuntimeMask) == RuntimeUninitialized;
 }
 
-INLINE bool isNoOMPMode() {
-  return execution_mode == NO_OMP;
+INLINE bool isRuntimeInitialized() {
+  return (execution_param & RuntimeMask) == RuntimeInitialized;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,24 +99,41 @@ INLINE int GetLogicalThreadIdInBlock() {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-INLINE int GetOmpThreadId(int threadId) {
+INLINE int GetOmpThreadId(int threadId,
+                          bool isSPMDExecutionMode,
+                          bool isRuntimeUninitialized) {
   // omp_thread_num
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(
-          threadId);
-  int rc = currTaskDescr->ThreadId();
+  int rc;
+
+  if (isRuntimeUninitialized) {
+    rc = GetThreadIdInBlock();
+    if (!isSPMDExecutionMode && rc >= GetMasterThreadID())
+      rc = 0;
+  } else {
+    omptarget_nvptx_TaskDescr *currTaskDescr =
+        omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(threadId);
+    rc = currTaskDescr->ThreadId();
+  }
   return rc;
 }
 
-INLINE int GetNumberOfOmpThreads(int threadId) {
+INLINE int GetNumberOfOmpThreads(int threadId,
+                                 bool isSPMDExecutionMode,
+                                 bool isRuntimeUninitialized) {
   // omp_num_threads
-  omptarget_nvptx_TaskDescr *currTaskDescr =
-      omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(
-          threadId);
+  int rc;
 
-  ASSERT0(LT_FUSSY, currTaskDescr, "expected a top task descr");
+  if (isRuntimeUninitialized) {
+    rc = isSPMDExecutionMode ? GetNumberOfThreadsInBlock()
+                             : GetNumberOfThreadsInBlock() - warpSize;
+  } else {
+    omptarget_nvptx_TaskDescr *currTaskDescr =
+        omptarget_nvptx_threadPrivateContext->GetTopLevelTaskDescr(
+            threadId);
+    ASSERT0(LT_FUSSY, currTaskDescr, "expected a top task descr");
+    rc = currTaskDescr->ThreadsInTeam();
+  }
 
-  int rc = currTaskDescr->ThreadsInTeam();
   return rc;
 }
 
@@ -198,4 +203,20 @@ INLINE void *SafeFree(void *ptr, const char *msg) {
 
 INLINE void named_sync(const int barrier, const int num_threads) {
   asm volatile("bar.sync %0, %1;" : : "r"(barrier), "r"(num_threads) : "memory" );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Teams Reduction Scratchpad Helpers
+////////////////////////////////////////////////////////////////////////////////
+
+INLINE unsigned int *GetTeamsReductionTimestamp() {
+  return static_cast<unsigned int *>(ReductionScratchpadPtr);
+}
+
+INLINE char *GetTeamsReductionScratchpad() {
+  return static_cast<char *>(ReductionScratchpadPtr) + 256;
+}
+
+INLINE void SetTeamsReductionScratchpadPtr(void *ScratchpadPtr) {
+  ReductionScratchpadPtr = ScratchpadPtr;
 }
