@@ -281,9 +281,77 @@ cupti_subscriber_callback
       DISPATCH_CALLBACK(cupti_unload_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
   } else if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
-    if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) || 
-        (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2) ||
-        (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)){
+    if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH) ||                
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeer) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeerAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeer_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeerAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunch) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchGrid) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchGridAsync) || 
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)) {
 
       uint64_t correlation_id;
       DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
