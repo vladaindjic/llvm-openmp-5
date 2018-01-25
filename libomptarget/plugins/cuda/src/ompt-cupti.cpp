@@ -815,9 +815,7 @@ ompt_stop_trace
   CUcontext context = di->context;
   cupti_trace_flush();
 
-  if (di->cupti_active_count.fetch_add(-1) == 1) {
-    return cupti_trace_stop(context);
-  } else {
+  if (di->cupti_active_count.fetch_add(-1) != 1) {
     // pause trace delivery for this device, which I think is the most that
     // can be done in this circumstance
     if (di) {
@@ -972,6 +970,7 @@ ompt_fini
           ompt_callback_device_finalize_fn(device_info[i].global_id); 
         }
       }
+      cupti_trace_finalize();
     }
 
     ompt_enabled = false;

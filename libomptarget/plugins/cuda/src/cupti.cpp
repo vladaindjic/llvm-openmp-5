@@ -144,6 +144,7 @@ external_correlation_activities[] = {
 
 CUpti_ActivityKind
 data_motion_explicit_activities[] = {
+  CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_MEMCPY, 
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -152,7 +153,6 @@ data_motion_explicit_activities[] = {
 CUpti_ActivityKind
 data_motion_implicit_activities[] = {
   CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
-  CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_INVALID
 };
 
@@ -166,6 +166,7 @@ kernel_invocation_activities[] = {
 
 CUpti_ActivityKind
 kernel_execution_activities[] = {
+  CUPTI_ACTIVITY_KIND_CONTEXT,
   CUPTI_ACTIVITY_KIND_FUNCTION,
   CUPTI_ACTIVITY_KIND_PC_SAMPLING,
   CUPTI_ACTIVITY_KIND_INVALID
@@ -181,6 +182,7 @@ overhead_activities[] = {
 
 CUpti_ActivityKind
 driver_activities[] = {
+  CUPTI_ACTIVITY_KIND_DEVICE,
   CUPTI_ACTIVITY_KIND_DRIVER,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -188,6 +190,7 @@ driver_activities[] = {
 
 CUpti_ActivityKind
 runtime_activities[] = {
+  CUPTI_ACTIVITY_KIND_DEVICE,
   CUPTI_ACTIVITY_KIND_RUNTIME,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -370,7 +373,6 @@ cupti_subscriber_callback
       }
     }
   } else if (domain == CUPTI_CB_DOMAIN_RUNTIME_API) { 
-    uint64_t correlation_id;
     switch (cb_id) {
       case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
       case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
@@ -382,6 +384,7 @@ cupti_subscriber_callback
       case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernelMultiDevice_v9000:  
       #endif
       {
+        uint64_t correlation_id;
         DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
         if (correlation_id != 0) {
           if (cb_info->callbackSite == CUPTI_API_ENTER) {
@@ -555,15 +558,12 @@ cupti_trace_pause
 }
 
 
-bool 
-cupti_trace_stop
+void 
+cupti_trace_finalize
 (
- CUcontext context
 )
 {
-  bool succ = true;
-  //CUPTI_CALL(cuptiFinalize, (), succ); not supported
-  return succ;
+  CUPTI_CALL(cuptiFinalize, ());
 }
 
 

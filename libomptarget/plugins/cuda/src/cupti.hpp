@@ -184,10 +184,9 @@ cupti_trace_pause
 );
 
 
-extern bool 
-cupti_trace_stop
+extern void 
+cupti_trace_finalize
 (
- CUcontext context
 );
 
 
