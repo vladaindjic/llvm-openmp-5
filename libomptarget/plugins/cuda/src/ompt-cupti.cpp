@@ -26,8 +26,6 @@
 
 #include <ompt.h>
 
-
-
 //******************************************************************************
 // local includes 
 //******************************************************************************
@@ -40,8 +38,6 @@
 #include "cuda.hpp"
 #include "ompt-cupti.hpp"
 
-
-
 //******************************************************************************
 // macros
 //******************************************************************************
@@ -52,13 +48,11 @@
 
 #define DECLARE_CAST(t, x, y) t *x = (t *) y
 
-
 #define COPY_TIMES(dest, src)			\
   {						\
     dest->start_time = src->start;		\
     dest->end_time = src->end;			\
   }
-
 
 typedef enum {
   cupti_tracing_uninitialized = 0, 
@@ -113,7 +107,7 @@ typedef enum {
 //******************************************************************************
 
 class ompt_device_info_t {
-public:
+ public:
   int initialized;
   int relative_id;
   int global_id;
@@ -1025,7 +1019,6 @@ ompt_device_init
     }
     ompt_correlation_start(&device_info[device_id]);
   }
-
 
   DP("exit ompt_device_init\n");
 }

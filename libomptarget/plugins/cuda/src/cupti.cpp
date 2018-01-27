@@ -24,7 +24,6 @@
 #include <stdlib.h>
 
 
-
 //******************************************************************************
 // local include files
 //******************************************************************************
@@ -363,12 +362,12 @@ cupti_subscriber_callback
         if (cb_info->callbackSite == CUPTI_API_ENTER) {
           CUPTI_CALL(cuptiActivityPushExternalCorrelationId,
             (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
-          DP("push correlation_id %ld\n", correlation_id);
+          DP("Driver push externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
         }
         if (cb_info->callbackSite == CUPTI_API_EXIT) {
           CUPTI_CALL(cuptiActivityPopExternalCorrelationId,
             (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id));
-          DP("pop correlation_id %ld\n", correlation_id);
+          DP("Driver pop externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
         }
       }
     }
