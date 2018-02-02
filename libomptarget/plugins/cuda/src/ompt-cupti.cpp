@@ -805,9 +805,9 @@ ompt_stop_trace
  ompt_device_t *device
 )
 {
+  DP("enter ompt_stop_trace\n");
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  cupti_trace_flush();
 
   if (di->cupti_active_count.fetch_add(-1) != 1) {
     // pause trace delivery for this device, which I think is the most that
@@ -817,6 +817,8 @@ ompt_stop_trace
     }
     return di ? true : false;
   }
+  DP("exit ompt_stop_trace\n");
+  return true;
 }
 
 
@@ -959,11 +961,12 @@ ompt_fini
     if (ompt_callback_device_finalize_fn) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
         if (device_info[i].initialized) {
-          ompt_correlation_end(&device_info[i]);
           ompt_stop_trace(ompt_device_from_id(i));
+          ompt_correlation_end(&device_info[i]);
           ompt_callback_device_finalize_fn(device_info[i].global_id); 
         }
       }
+      cupti_trace_flush();
       cupti_trace_finalize();
     }
 
