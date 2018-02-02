@@ -807,16 +807,9 @@ ompt_stop_trace
 {
   DP("enter ompt_stop_trace\n");
   ompt_device_info_t *di = ompt_device_info(device);
-  CUcontext context = di->context;
-
-  if (di->cupti_active_count.fetch_add(-1) != 1) {
-    // pause trace delivery for this device, which I think is the most that
-    // can be done in this circumstance
-    if (di) {
-      di->paused = 1;
-    }
-    return di ? true : false;
-  }
+  di->cupti_active_count.fetch_add(-1);
+  di->paused = true;
+  cupti_trace_flush();
   DP("exit ompt_stop_trace\n");
   return true;
 }
@@ -966,7 +959,6 @@ ompt_fini
           ompt_callback_device_finalize_fn(device_info[i].global_id); 
         }
       }
-      cupti_trace_flush();
       cupti_trace_finalize();
     }
 
