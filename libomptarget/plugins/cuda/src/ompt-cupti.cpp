@@ -781,7 +781,7 @@ ompt_start_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  bool status;
+  bool status = true;
 
   DP("enter ompt_start_trace(device=%p, request=%p, complete=%p) device_id=%d\n", 
      (void *) device, fnptr_to_ptr(request), fnptr_to_ptr(complete), di->global_id);  

@@ -475,7 +475,8 @@ cupti_set_monitoring
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    if (cupti_enabled_activities[context][activity_kind]) {
+    if ((enable && cupti_enabled_activities[context][activity_kind]) ||
+      (!enable && !cupti_enabled_activities[context][activity_kind])) {
       succeeded++;
       continue;
     }
@@ -484,6 +485,9 @@ cupti_set_monitoring
       if (enable) {
         DP("activity %d enabled\n", activity_kind);
         cupti_enabled_activities[context][activity_kind] = true;
+      } else {
+        DP("activity %d disabled\n", activity_kind);
+        cupti_enabled_activities[context][activity_kind] = false;
       }
       succeeded++;
     }
