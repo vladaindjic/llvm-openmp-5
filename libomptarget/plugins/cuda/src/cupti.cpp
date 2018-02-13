@@ -679,3 +679,18 @@ cupti_get_num_dropped_records
 {
   CUPTI_CALL(cuptiActivityGetNumDroppedRecords, (context, streamId, dropped));
 }
+
+
+void
+cupti_pc_sampling_config
+(
+ CUcontext context,
+ CUpti_ActivityPCSamplingPeriod period
+)
+{
+  CUpti_ActivityPCSamplingConfig config;
+  config.size = 0;
+  config.samplingPeriod = period;
+  config.samplingPeriod2 = 0;
+  CUPTI_CALL(cuptiActivityConfigurePCSampling, (context, &config));
+}

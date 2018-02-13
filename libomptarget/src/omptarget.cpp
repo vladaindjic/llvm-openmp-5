@@ -40,7 +40,7 @@
 
 #define DP(...) DEBUGP("Libomptarget", __VA_ARGS__)
 #ifdef OMPTARGET_DEBUG
-static int DebugLevel = 0;
+static int DebugLevel = 1;
 
 #define DP(...) \
   do { \
@@ -219,7 +219,6 @@ static void
 ompt_target_operation_end()
 {
   if (ompt_enabled) {
-    ompt_target_region_opid = 0;
     DP("in ompt_target_region_end (ompt_target_region_opid = %lu)\n", 
        ompt_target_region_opid);
   }
@@ -393,7 +392,7 @@ static const char *RTLNames[] = {
 struct RTLInfoTy;
 static int target(int64_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
-    int32_t team_num, int32_t thread_limit, int IsTeamConstruct, OmptCallbackInfo &omptCallbackInfo);
+    int32_t team_num, int32_t thread_limit, int IsTeamConstruct);
 
 /// All begin addresses must be 8-aligned
 static const int64_t alignment = 8;
@@ -514,7 +513,7 @@ struct DeviceTy {
   __tgt_target_table *load_binary(__tgt_device_image *Img);
 
   // johnmc
-  void *data_alloc(int64_t Size);
+  void *data_alloc(int64_t Size, void *HstPtrBegin);
   int32_t data_delete(void *TgtPtr);
 
   int32_t data_submit(void *TgtPtrBegin, void *HstPtrBegin, int64_t Size);
@@ -843,7 +842,7 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
   }
 
   DeviceTy &Device = Devices[device_num];
-  rc = Device.RTL->data_alloc(Device.RTLDeviceID, size, NULL);
+  rc = Device.data_alloc(size, NULL);
   DP("omp_target_alloc returns device ptr " DPxMOD "\n", DPxPTR(rc));
   return rc;
 }
@@ -1233,7 +1232,7 @@ void *DeviceTy::getOrAllocTgtPtr(void *HstPtrBegin, void *HstPtrBase,
   } else if (Size) {
     // If it is not contained and Size > 0 we should create a new entry for it.
     IsNew = true;
-    uintptr_t tp = (uintptr_t)RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
+    uintptr_t tp = (uintptr_t)data_alloc(Size, HstPtrBegin);
     DP("Creating new map entry: HstBase=" DPxMOD ", HstBegin=" DPxMOD ", "
         "HstEnd=" DPxMOD ", TgtBegin=" DPxMOD "\n", DPxPTR(HstPtrBase),
         DPxPTR(HstPtrBegin), DPxPTR((uintptr_t)HstPtrBegin + Size), DPxPTR(tp));
@@ -1323,12 +1322,14 @@ int DeviceTy::deallocTgtPtr(void *HstPtrBegin, int64_t Size, bool ForceDelete) {
 
 /// Init device, should not be called directly.
 void DeviceTy::init() {
+  DP("enter device init\n"); 
   ompt_target_operation_begin();
   int32_t rc = RTL->init_device(RTLDeviceID, DeviceID);
   ompt_target_operation_end();
   if (rc == OFFLOAD_SUCCESS) {
     IsInit = true;
   }
+  DP("exit device init\n"); 
 }
 
 /// Thread-safe method to initialize the device only once.
@@ -1349,32 +1350,38 @@ int32_t DeviceTy::initOnce() {
 
 // Load binary to device.
 __tgt_target_table *DeviceTy::load_binary(__tgt_device_image *Img) {
+  DP("enter binary load\n");
   ompt_target_operation_begin();
   const char *load_module = lm_addr_to_module(Img->ImageStart); 
   RTL->Mtx.lock();
   __tgt_target_table *rc = RTL->load_binary(RTLDeviceID, load_module, Img);
   RTL->Mtx.unlock();
   ompt_target_operation_end();
+  DP("exit binary load\n");
   return rc;
 }
 
-void *DeviceTy::data_alloc(int64_t Size) {
+void *DeviceTy::data_alloc(int64_t Size, void *HstPtrBegin) {
+  DP("enter data_alloc\n");
   ompt_target_operation_begin();
-  void *TgtPtrBegin = RTL->data_alloc(RTLDeviceID, Size, NULL);
+  void *TgtPtrBegin = RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
       ompt_target_data_alloc, 0, TgtPtrBegin, Size));
   ompt_target_operation_end();
+  DP("exit data_alloc\n");
   return TgtPtrBegin;
 }
 
 int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
+  DP("enter data_delete\n");
   ompt_target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
       ompt_target_data_delete, 0, TgtPtrBegin, 0));
   int32_t result = RTL->data_delete(RTLDeviceID, TgtPtrBegin);
   ompt_target_operation_end();
+  DP("exit data_delete\n");
   return result;
 }
 
@@ -1382,36 +1389,42 @@ int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
 // Submit data to device.
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
+  DP("enter data_submit\n");
   ompt_target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
       ompt_target_data_transfer_to_dev, HstPtrBegin, TgtPtrBegin, Size));
   int32_t result = RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size);
   ompt_target_operation_end();
+  DP("exit data_submit\n");
   return result;
 }
 
 // Retrieve data from device.
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
+  DP("enter data_retrieve\n");
   ompt_target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
      (ompt_target_region_id, ompt_target_region_opid, 
       ompt_target_data_transfer_from_dev, HstPtrBegin, TgtPtrBegin, Size));
   int32_t result = RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
   ompt_target_operation_end();
+  DP("exit data_retrieve\n");
   return result;
 }
 
 // Run region on device
 int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
     ptrdiff_t *TgtOffsets, int32_t TgtVarsSize) {
+  DP("enter run_region\n");
   ompt_target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_submit_fn, 
 		(ompt_target_region_id, ompt_target_region_opid));
   int32_t result = RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtOffsets,
       TgtVarsSize);
   ompt_target_operation_end();
+  DP("exit run_region\n");
   return result;
 }
 
@@ -1419,12 +1432,14 @@ int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
 int32_t DeviceTy::run_team_region(void *TgtEntryPtr, void **TgtVarsPtr,
     ptrdiff_t *TgtOffsets, int32_t TgtVarsSize, int32_t NumTeams,
     int32_t ThreadLimit, uint64_t LoopTripCount) {
+  DP("enter run_team_region\n");
   ompt_target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_submit_fn, 
 		(ompt_target_region_id, ompt_target_region_opid));
   int32_t result = RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtOffsets,
       TgtVarsSize, NumTeams, ThreadLimit, LoopTripCount);
   ompt_target_operation_end();
+  DP("exit run_team_region\n");
   return result;
 }
 
@@ -1492,6 +1507,9 @@ static void RegisterGlobalCtorsDtorsForImage(__tgt_bin_desc *desc,
 ////////////////////////////////////////////////////////////////////////////////
 /// adds a target shared library to the target execution image
 EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
 
   // Attempt to load all plugins available in the system.
   RTLs.LoadRTLsOnce();
@@ -1579,6 +1597,7 @@ EXTERN void __tgt_register_lib(__tgt_bin_desc *desc) {
   }
   RTLsMtx.unlock();
 
+  OMPT_TARGET_REGION_END();
 
   DP("Done registering entries!\n");
 }
@@ -1589,6 +1608,8 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
   DP("Unloading target library!\n");
 
   OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
+  OMPT_TARGET_REGION_BEGIN();
 
   RTLsMtx.lock();
   // Find which RTL understands each image, if any.
@@ -1622,8 +1643,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
         Device.PendingGlobalsMtx.lock();
         if (Device.PendingCtorsDtors[desc].PendingCtors.empty()) {
           for (auto &dtor : Device.PendingCtorsDtors[desc].PendingDtors) {
-            int rc = target(Device.DeviceID, dtor, 0, NULL, NULL, NULL, NULL, 1,
-			    1, true /*team*/, omptCallbackInfo);
+            int rc = target(Device.DeviceID, dtor, 0, NULL, NULL, NULL, NULL, 1, 1, true /*team*/);
             if (rc != OFFLOAD_SUCCESS) {
               DP("Running destructor " DPxMOD " failed.\n", DPxPTR(dtor));
             }
@@ -1672,6 +1692,7 @@ EXTERN void __tgt_unregister_lib(__tgt_bin_desc *desc) {
   // TODO: Remove RTL and the devices it manages if it's not used anymore?
   // TODO: Write some RTL->unload_image(...) function?
 
+  OMPT_TARGET_REGION_END();
   DP("Done unregistering library!\n");
 }
 
@@ -1778,8 +1799,7 @@ static int InitLibrary(DeviceTy& Device, OmptCallbackInfo &omptCallbackInfo) {
         DP("Has pending ctors... call now\n");
         for (auto &entry : lib.second.PendingCtors) {
           void *ctor = entry;
-          int rc = target(device_id, ctor, 0, NULL, NULL, NULL,
-                          NULL, 1, 1, true /*team*/, omptCallbackInfo);
+          int rc = target(device_id, ctor, 0, NULL, NULL, NULL, NULL, 1, 1, true /*team*/);
           if (rc != OFFLOAD_SUCCESS) {
             DP("Running ctor " DPxMOD " failed.\n", DPxPTR(ctor));
             Device.PendingGlobalsMtx.unlock();
@@ -2216,6 +2236,17 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
     return;
   }
 
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
+
   DeviceTy& Device = Devices[device_id];
 
   // Translate maps
@@ -2389,7 +2420,20 @@ EXTERN void __tgt_target_data_end(int64_t device_id, int32_t arg_num,
     return;
   }
 
+  OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
+
   OMPT_TARGET_REGION_BEGIN();
+
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
 
   // Translate maps
   int32_t new_arg_num;
@@ -2440,6 +2484,17 @@ EXTERN void __tgt_target_data_update(int64_t device_id, int32_t arg_num,
   if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return;
+  }
+
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
   }
 
   DeviceTy& Device = Devices[device_id];
@@ -2526,19 +2581,9 @@ EXTERN void __tgt_target_data_update_nowait(
 /// integer different from zero otherwise.
 static int target(int64_t device_id, void *host_ptr, int32_t arg_num,
     void **args_base, void **args, int64_t *arg_sizes, int64_t *arg_types,
-    int32_t team_num, int32_t thread_limit, int IsTeamConstruct, OmptCallbackInfo &omptCallbackInfo) {
+    int32_t team_num, int32_t thread_limit, int IsTeamConstruct) {
+  DP("enter target region %d\n", ompt_target_region_id);
   DeviceTy &Device = Devices[device_id];
-
-  if (omptCallbackInfo.needCallback()) {
-    OMPT_CALLBACK(ompt_callback_target_fn, 
-		  (ompt_task_target, 
-		   ompt_scope_begin,
-		   device_id,
-		   ompt_get_task_data_fn(), 
-		   ompt_target_region_id, 
-		   omptCallbackInfo.codeptr()
-		   )); 
-  }
 
    // got a new constructor/destructor?
 
@@ -2628,8 +2673,7 @@ static int target(int64_t device_id, void *host_ptr, int32_t arg_num,
       TgtBaseOffset = 0;
     } else if (arg_types[i] & OMP_TGT_MAPTYPE_PRIVATE) {
       // Allocate memory for (first-)private array
-      TgtPtrBegin = Device.RTL->data_alloc(Device.RTLDeviceID,
-          arg_sizes[i], HstPtrBegin);
+      TgtPtrBegin = Device.data_alloc(arg_sizes[i], HstPtrBegin);
       if (!TgtPtrBegin) {
         DP ("Data allocation for %sprivate array " DPxMOD " failed\n",
             (arg_types[i] & OMP_TGT_MAPTYPE_TO ? "first-" : ""),
@@ -2720,6 +2764,7 @@ static int target(int64_t device_id, void *host_ptr, int32_t arg_num,
     DP("Call to target_data_end failed.\n");
     rc = OFFLOAD_FAIL;
   }
+  DP("exit target region %d\n", ompt_target_region_id);
 
   return rc;
 }
@@ -2742,6 +2787,17 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
     return OFFLOAD_FAIL;
   }
 
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
+
   // Translate maps
   int32_t new_arg_num;
   void **new_args_base;
@@ -2754,7 +2810,7 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
   //return target(device_id, host_ptr, arg_num, args_base, args, arg_sizes,
   //    arg_types, 0, 0, false /*team*/, false /*recursive*/);
   int rc = target(device_id, host_ptr, new_arg_num, new_args_base, new_args,
-		  new_arg_sizes, new_arg_types, 0, 0, false /*team*/, omptCallbackInfo);
+		  new_arg_sizes, new_arg_types, 0, 0, false /*team*/);
 
   OMPT_TARGET_REGION_END();
 
@@ -2791,6 +2847,16 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
     return OFFLOAD_FAIL;
   }
 
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
 
   // Translate maps
   int32_t new_arg_num;
@@ -2805,7 +2871,7 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
   //              arg_types, team_num, thread_limit, true /*team*/,
   //              false /*recursive*/);
   int rc = target(device_id, host_ptr, new_arg_num, new_args_base, new_args,
-		  new_arg_sizes, new_arg_types, team_num, thread_limit, true /*team*/, omptCallbackInfo);
+		  new_arg_sizes, new_arg_types, team_num, thread_limit, true /*team*/);
 
   OMPT_TARGET_REGION_END();
 
@@ -2833,14 +2899,28 @@ EXTERN void __kmpc_push_target_tripcount(int64_t device_id,
 
   OmptCallbackInfo omptCallbackInfo(__builtin_return_address(0));
 
+  OMPT_TARGET_REGION_BEGIN();
+
   if (CheckDevice(device_id, omptCallbackInfo) != OFFLOAD_SUCCESS) {
     DP("Failed to get device %d ready\n", device_id);
     return;
   }
 
+  if (omptCallbackInfo.needCallback()) {
+    OMPT_CALLBACK(ompt_callback_target_fn, 
+		  (ompt_task_target, 
+		   ompt_scope_begin,
+		   device_id,
+		   ompt_get_task_data_fn(), 
+		   ompt_target_region_id, 
+		   omptCallbackInfo.codeptr()
+		   )); 
+  }
+
   DP("__kmpc_push_target_tripcount(%" PRId64 ", %" PRIu64 ")\n", device_id,
       loop_tripcount);
   Devices[device_id].loopTripCnt = loop_tripcount;
+  OMPT_TARGET_REGION_END();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

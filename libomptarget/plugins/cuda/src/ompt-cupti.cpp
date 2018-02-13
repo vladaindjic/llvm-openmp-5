@@ -92,7 +92,8 @@ typedef enum {
   macro(ompt_advance_buffer_cursor)		\
   macro(ompt_get_record_type)			\
   macro(ompt_get_record_native)			\
-  macro(ompt_get_record_abstract)
+  macro(ompt_get_record_abstract)   \
+  macro(ompt_set_pc_sampling_frequency)
 
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
@@ -536,6 +537,19 @@ ompt_get_record_abstract
 
 
 static void
+ompt_set_pc_sampling_frequency
+(
+ ompt_device_t *device,
+ int pc_sampling_frequency
+)
+{
+  ompt_device_info_t *di = ompt_device_info(device);
+  CUcontext context = di->context;
+  cupti_pc_sampling_config(context, (CUpti_ActivityPCSamplingPeriod)pc_sampling_frequency);
+}
+
+
+static void
 device_completion_callback
 (
  uint64_t relative_device_id,
@@ -621,8 +635,6 @@ ompt_device_unload
   DP("enter ompt_device_unload(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_unload_fn) {
-    ompt_device_info_t *di = ompt_device_info_from_id(code_device_relative_id);
-    CUcontext context = di->context;
     cupti_trace_flush();
     ompt_callback_device_unload_fn(code_device_global_id, module_id);
   }

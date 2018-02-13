@@ -198,5 +198,13 @@ cupti_get_num_dropped_records
  size_t* dropped 
 );
 
+
+extern void
+cupti_pc_sampling_config
+(
+ CUcontext context,
+ CUpti_ActivityPCSamplingPeriod period
+);
+
 //===----------------------------------------------------------------------===//
 #endif // __CUPTI_HPP__
