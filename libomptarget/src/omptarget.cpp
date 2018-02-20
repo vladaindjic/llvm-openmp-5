@@ -2238,7 +2238,7 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
 
   if (omptCallbackInfo.needCallback()) {
     OMPT_CALLBACK(ompt_callback_target_fn, 
-		  (ompt_task_target, 
+		  (ompt_task_target_enter_data, 
 		   ompt_scope_begin,
 		   device_id,
 		   ompt_get_task_data_fn(), 
@@ -2426,7 +2426,7 @@ EXTERN void __tgt_target_data_end(int64_t device_id, int32_t arg_num,
 
   if (omptCallbackInfo.needCallback()) {
     OMPT_CALLBACK(ompt_callback_target_fn, 
-		  (ompt_task_target, 
+		  (ompt_task_target_exit_data, 
 		   ompt_scope_begin,
 		   device_id,
 		   ompt_get_task_data_fn(), 
@@ -2488,7 +2488,7 @@ EXTERN void __tgt_target_data_update(int64_t device_id, int32_t arg_num,
 
   if (omptCallbackInfo.needCallback()) {
     OMPT_CALLBACK(ompt_callback_target_fn, 
-		  (ompt_task_target, 
+		  (ompt_task_target_update, 
 		   ompt_scope_begin,
 		   device_id,
 		   ompt_get_task_data_fn(), 
