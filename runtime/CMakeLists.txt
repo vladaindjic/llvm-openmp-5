@@ -17,7 +17,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 # Standalone build or part of LLVM?
 set(LIBOMP_STANDALONE_BUILD FALSE)
-if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}" OR
+if(OPENMP_STANDALONE_BUILD OR
+   "${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}" OR
    "${CMAKE_SOURCE_DIR}/runtime" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
   project(libomp C CXX)
   set(LIBOMP_STANDALONE_BUILD TRUE)
@@ -88,15 +89,13 @@ libomp_check_variable(LIBOMP_ARCH 32e x86_64 32 i386 arm ppc64 ppc64le aarch64 m
 set(LIBOMP_LIB_TYPE normal CACHE STRING
   "Performance,Profiling,Stubs library (normal/profile/stubs)")
 libomp_check_variable(LIBOMP_LIB_TYPE normal profile stubs)
-set(LIBOMP_OMP_VERSION 45 CACHE STRING
-  "The OpenMP version (45/40/30)")
-if(LIBOMP_OMP_VERSION EQUAL 41)
-  libomp_warning_say("LIBOMP_OMP_VERSION=41 is deprecated and will be removed in a later version. Please use 45.")
-  set(LIBOMP_OMP_VERSION 45)
-endif()
-libomp_check_variable(LIBOMP_OMP_VERSION 45 40 30)
+set(LIBOMP_OMP_VERSION 50 CACHE STRING
+  "The OpenMP version (50/45/40/30)")
+libomp_check_variable(LIBOMP_OMP_VERSION 50 45 40 30)
 # Set the OpenMP Year and Month assiociated with version
-if(${LIBOMP_OMP_VERSION} GREATER 45 OR ${LIBOMP_OMP_VERSION} EQUAL 45)
+if(${LIBOMP_OMP_VERSION} GREATER 50 OR ${LIBOMP_OMP_VERSION} EQUAL 50)
+  set(LIBOMP_OMP_YEAR_MONTH 201611)
+elseif(${LIBOMP_OMP_VERSION} GREATER 45 OR ${LIBOMP_OMP_VERSION} EQUAL 45)
   set(LIBOMP_OMP_YEAR_MONTH 201511)
 elseif(${LIBOMP_OMP_VERSION} GREATER 40 OR ${LIBOMP_OMP_VERSION} EQUAL 40)
   set(LIBOMP_OMP_YEAR_MONTH 201307)
@@ -280,12 +279,13 @@ set(LIBOMP_USE_DEBUGGER FALSE CACHE BOOL
 set(LIBOMP_USE_STDCPPLIB FALSE CACHE BOOL
   "Should we link to C++ library?")
 
-# TSX (x86) based locks have __asm code which can be troublesome for some compilers.
+# Intel(R) Transactional Synchronization Extensions (Intel(R) TSX) based locks have
+# __asm code which can be troublesome for some compilers.  This feature is also x86 specific.
 # TODO: Make this a real feature check
 set(LIBOMP_USE_ADAPTIVE_LOCKS "${LIBOMP_HAVE_ADAPTIVE_LOCKS}" CACHE BOOL
-  "Should TSX-based lock be compiled (adaptive lock in kmp_lock.cpp).  These are x86 specific.")
+  "Should Intel(R) TSX lock be compiled (adaptive lock in kmp_lock.cpp).  These are x86 specific.")
 if(LIBOMP_USE_ADAPTIVE_LOCKS AND (NOT LIBOMP_HAVE_ADAPTIVE_LOCKS))
-  libomp_error_say("Adaptive locks (TSX) functionality requested but not available")
+  libomp_error_say("Adaptive locks (Intel(R) TSX) functionality is only supported on x86 Architecture")
 endif()
 
 # - stats-gathering enables OpenMP stats where things like the number of
@@ -306,6 +306,16 @@ set(LIBOMP_ENABLE_SHARED TRUE CACHE BOOL
 
 if(WIN32 AND NOT LIBOMP_ENABLE_SHARED)
   libomp_error_say("Static libraries requested but not available on Windows")
+endif()
+
+if(LIBOMP_USE_ITT_NOTIFY AND NOT LIBOMP_ENABLE_SHARED)
+  message(STATUS "ITT Notify not supported for static libraries - forcing ITT Notify off")
+  set(LIBOMP_USE_ITT_NOTIFY FALSE)
+endif()
+
+if(LIBOMP_USE_VERSION_SYMBOLS AND (NOT LIBOMP_ENABLE_SHARED) )
+  message(STATUS "Version symbols not supported for static libraries - forcing Version symbols functionality off")
+  set (LIBOMP_USE_VERSION_SYMBOLS FALSE)
 endif()
 
 # OMPT-support

@@ -44,6 +44,22 @@
 #define BARRIER_COUNTER 0
 #define ORDERED_COUNTER 1
 
+// Macros for Cuda intrinsics
+// In Cuda 9.0, the *_sync() version takes an extra argument 'mask'.
+// Also, __ballot(1) in Cuda 8.0 is replaced with __activemask().
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 9000
+#define __SHFL_SYNC(mask, var, srcLane) __shfl_sync((mask), (var), (srcLane))
+#define __SHFL_DOWN_SYNC(mask, var, delta, width) \
+                        __shfl_down_sync((mask), (var), (delta), (width))
+#define __BALLOT_SYNC(mask, predicate) __ballot_sync((mask), (predicate))
+#define __ACTIVEMASK() __activemask()
+#else
+#define __SHFL_SYNC(mask, var, srcLane) __shfl((var), (srcLane))
+#define __SHFL_DOWN_SYNC(mask, var, delta, width) __shfl_down((var), (delta), (width))
+#define __BALLOT_SYNC(mask, predicate) __ballot((predicate))
+#define __ACTIVEMASK() __ballot(1)
+#endif
+
 // Data sharing related quantities, need to match what is used in the compiler.
 enum DATA_SHARING_SIZES {
   // The maximum number of workers in a kernel.
@@ -193,6 +209,8 @@ public:
     return workDescrForActiveParallel;
   }
   INLINE omp_lock_t *CriticalLock() { return &criticalLock; }
+  INLINE uint64_t *getLastprivateIterBuffer() { return &lastprivateIterBuffer; }
+
   // init
   INLINE void InitTeamDescr();
 
@@ -218,6 +236,7 @@ private:
   omptarget_nvptx_WorkDescr
       workDescrForActiveParallel; // one, ONLY for the active par
   omp_lock_t criticalLock;
+  uint64_t lastprivateIterBuffer;
 
   __align__(16) __kmpc_data_sharing_worker_slot_static worker_rootS[DS_Max_Worker_Warp_Size - 1];
   __align__(16) __kmpc_data_sharing_master_slot_static master_rootS[1];
@@ -269,7 +288,12 @@ public:
   }
 
   INLINE void InitThreadPrivateContext(int tid);
-
+  INLINE void SetSourceQueue(uint64_t Src) {
+    SourceQueue = Src;
+  }
+  INLINE uint64_t GetSourceQueue() {
+    return SourceQueue;
+  }
 private:
   // team context for this team
   omptarget_nvptx_TeamDescr teamContext;
@@ -293,6 +317,8 @@ private:
   // state for dispatch with dyn/guided OR static (never use both at a time)
   Counter currEvent_or_nextLowerBound[MAX_THREADS_PER_TEAM];
   Counter eventsNum_or_stride[MAX_THREADS_PER_TEAM];
+  // Queue to which this object must be returned.
+  uint64_t SourceQueue;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,7 +327,8 @@ private:
 
 extern __device__ __shared__ omptarget_nvptx_ThreadPrivateContext
     *omptarget_nvptx_threadPrivateContext;
-extern __device__ __shared__ int8_t execution_mode;
+extern __device__ __shared__ uint32_t execution_param;
+extern __device__ __shared__ void *ReductionScratchpadPtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 // work function (outlined parallel/simd functions) and arguments.
@@ -309,7 +336,7 @@ extern __device__ __shared__ int8_t execution_mode;
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef void * omptarget_nvptx_WorkFn;
-extern __device__ __shared__ omptarget_nvptx_WorkFn   omptarget_nvptx_workFn;
+extern volatile __device__ __shared__ omptarget_nvptx_WorkFn   omptarget_nvptx_workFn;
 
 ////////////////////////////////////////////////////////////////////////////////
 // get private data structures

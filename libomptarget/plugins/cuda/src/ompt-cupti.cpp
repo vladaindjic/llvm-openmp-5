@@ -26,8 +26,6 @@
 
 #include <ompt.h>
 
-
-
 //******************************************************************************
 // local includes 
 //******************************************************************************
@@ -40,8 +38,6 @@
 #include "cuda.hpp"
 #include "ompt-cupti.hpp"
 
-
-
 //******************************************************************************
 // macros
 //******************************************************************************
@@ -52,13 +48,11 @@
 
 #define DECLARE_CAST(t, x, y) t *x = (t *) y
 
-
 #define COPY_TIMES(dest, src)			\
   {						\
     dest->start_time = src->start;		\
     dest->end_time = src->end;			\
   }
-
 
 typedef enum {
   cupti_tracing_uninitialized = 0, 
@@ -98,7 +92,8 @@ typedef enum {
   macro(ompt_advance_buffer_cursor)		\
   macro(ompt_get_record_type)			\
   macro(ompt_get_record_native)			\
-  macro(ompt_get_record_abstract)
+  macro(ompt_get_record_abstract)   \
+  macro(ompt_set_pc_sampling_frequency)
 
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
@@ -113,7 +108,7 @@ typedef enum {
 //******************************************************************************
 
 class ompt_device_info_t {
-public:
+ public:
   int initialized;
   int relative_id;
   int global_id;
@@ -542,6 +537,19 @@ ompt_get_record_abstract
 
 
 static void
+ompt_set_pc_sampling_frequency
+(
+ ompt_device_t *device,
+ int pc_sampling_frequency
+)
+{
+  ompt_device_info_t *di = ompt_device_info(device);
+  CUcontext context = di->context;
+  cupti_pc_sampling_config(context, (CUpti_ActivityPCSamplingPeriod)pc_sampling_frequency);
+}
+
+
+static void
 device_completion_callback
 (
  uint64_t relative_device_id,
@@ -627,9 +635,7 @@ ompt_device_unload
   DP("enter ompt_device_unload(module_id=%d, cubin=%p, cubin_size=%lu)\n", 
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_unload_fn) {
-    ompt_device_info_t *di = ompt_device_info_from_id(code_device_relative_id);
-    CUcontext context = di->context;
-    cupti_trace_flush(context);
+    cupti_trace_flush();
     ompt_callback_device_unload_fn(code_device_global_id, module_id);
   }
 }
@@ -761,7 +767,7 @@ ompt_pause_trace
   DP("enter ompt_pause_trace(device=%p, begin_pause=%d) device_id=%d\n", 
      (void *) device, begin_pause, di->global_id);
 
-  cupti_trace_flush(context);
+  cupti_trace_flush();
 
   if ((begin_pause && di->cupti_active_count.fetch_add(-1) == 1) ||
     (!begin_pause && di->cupti_active_count.fetch_add(1) == 0)) {
@@ -787,7 +793,7 @@ ompt_start_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  bool status;
+  bool status = true;
 
   DP("enter ompt_start_trace(device=%p, request=%p, complete=%p) device_id=%d\n", 
      (void *) device, fnptr_to_ptr(request), fnptr_to_ptr(complete), di->global_id);  
@@ -811,20 +817,13 @@ ompt_stop_trace
  ompt_device_t *device
 )
 {
+  DP("enter ompt_stop_trace\n");
   ompt_device_info_t *di = ompt_device_info(device);
-  CUcontext context = di->context;
-  cupti_trace_flush(context);
-
-  if (di->cupti_active_count.fetch_add(-1) == 1) {
-    return cupti_trace_stop(context);
-  } else {
-    // pause trace delivery for this device, which I think is the most that
-    // can be done in this circumstance
-    if (di) {
-      di->paused = 1;
-    }
-    return di ? true : false;
- }
+  di->cupti_active_count.fetch_add(-1);
+  di->paused = true;
+  cupti_trace_flush();
+  DP("exit ompt_stop_trace\n");
+  return true;
 }
 
 
@@ -967,11 +966,12 @@ ompt_fini
     if (ompt_callback_device_finalize_fn) {
       for (unsigned int i = 0; i < device_info.size(); i++) {
         if (device_info[i].initialized) {
-          ompt_correlation_end(&device_info[i]);
           ompt_stop_trace(ompt_device_from_id(i));
+          ompt_correlation_end(&device_info[i]);
           ompt_callback_device_finalize_fn(device_info[i].global_id); 
         }
       }
+      cupti_trace_finalize();
     }
 
     ompt_enabled = false;
@@ -1026,7 +1026,6 @@ ompt_device_init
     }
     ompt_correlation_start(&device_info[device_id]);
   }
-
 
   DP("exit ompt_device_init\n");
 }

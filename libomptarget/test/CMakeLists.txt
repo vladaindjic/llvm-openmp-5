@@ -10,6 +10,12 @@ endif()
 set(LIBOMPTARGET_TEST_CFLAGS "" CACHE STRING
   "Extra compiler flags to send to the test compiler")
 
+if(LIBOMPTARGET_CMAKE_BUILD_TYPE MATCHES debug)
+  set(LIBOMPTARGET_DEBUG True)
+else()
+  set(LIBOMPTARGET_DEBUG False)
+endif()
+
 if(${LIBOMPTARGET_STANDALONE_BUILD})
   # Make sure we can use the console pool for recent cmake and ninja > 1.5
   if(CMAKE_VERSION VERSION_LESS 3.1.20141117)
@@ -23,22 +29,22 @@ if(${LIBOMPTARGET_STANDALONE_BUILD})
     "C++ compiler to use for testing OpenMP offloading library")
   set(LIBOMPTARGET_TEST_OPENMP_FLAG -fopenmp CACHE STRING
     "OpenMP compiler flag to use for testing OpenMP offloading library")
-  set(LIBOMPTARGET_LLVM_LIT_EXECUTABLE "" CACHE STRING
-    "Path to llvm-lit")
-  find_program(LIT_EXECUTABLE NAMES llvm-lit ${LIBOMPTARGET_LLVM_LIT_EXECUTABLE})
-  if(NOT LIT_EXECUTABLE)
+  find_program(LIBOMPTARGET_LLVM_LIT_EXECUTABLE
+    NAMES llvm-lit lit.py lit
+    PATHS ${OPENMP_LLVM_TOOLS_DIR})
+  if(NOT LIBOMPTARGET_LLVM_LIT_EXECUTABLE)
     libomptarget_say("Cannot find llvm-lit.")
-    libomptarget_say("Please put llvm-lit in your PATH or set LIBOMPTARGET_LLVM_LIT_EXECUTABLE to its full path")
+    libomptarget_say("Please put llvm-lit in your PATH or set LIBOMPTARGET_LLVM_LIT_EXECUTABLE to its full path or point OPENMP_LLVM_TOOLS_DIR to its directory")
     libomptarget_warning_say("The check-libomptarget target will not be available!")
     return()
   endif()
   
-  set(LIBOMPTARGET_FILECHECK_EXECUTABLE "" CACHE STRING
-    "Path to FileCheck")
-  find_program(LIBOMPTARGET_FILECHECK NAMES FileCheck ${LIBOMPTARGET_FILECHECK_EXECUTABLE})
-  if(NOT LIBOMPTARGET_FILECHECK)
+  find_program(LIBOMPTARGET_FILECHECK_EXECUTABLE
+    NAMES FileCheck
+    PATHS ${OPENMP_LLVM_TOOLS_DIR})
+  if(NOT LIBOMPTARGET_FILECHECK_EXECUTABLE)
     libomptarget_say("Cannot find FileCheck.")
-    libomptarget_say("Please put FileCheck in your PATH or set LIBOMPTARGET_FILECHECK_EXECUTABLE to its full path")
+    libomptarget_say("Please put FileCheck in your PATH or set LIBOMPTARGET_FILECHECK_EXECUTABLE to its full path or point OPENMP_LLVM_TOOLS_DIR to its directory")
     libomptarget_warning_say("The check-libomptarget target will not be available!")
     return()
   endif()
@@ -55,7 +61,7 @@ if(${LIBOMPTARGET_STANDALONE_BUILD})
     "Default options for lit")
   separate_arguments(LIBOMPTARGET_LIT_ARGS)
   add_custom_target(check-libomptarget
-    COMMAND ${PYTHON_EXECUTABLE} ${LIT_EXECUTABLE} ${LIBOMPTARGET_LIT_ARGS} ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ${PYTHON_EXECUTABLE} ${LIBOMPTARGET_LLVM_LIT_EXECUTABLE} ${LIBOMPTARGET_LIT_ARGS} ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS omptarget
     COMMENT "Running libomptarget tests"
     ${cmake_3_2_USES_TERMINAL}
@@ -70,7 +76,7 @@ else()
   if(NOT MSVC)
     set(LIBOMPTARGET_TEST_C_COMPILER ${LLVM_RUNTIME_OUTPUT_INTDIR}/clang)
     set(LIBOMPTARGET_TEST_CXX_COMPILER ${LLVM_RUNTIME_OUTPUT_INTDIR}/clang++)
-    set(LIBOMPTARGET_FILECHECK ${LLVM_RUNTIME_OUTPUT_INTDIR}/FileCheck)
+    set(LIBOMPTARGET_FILECHECK_EXECUTABLE ${LLVM_RUNTIME_OUTPUT_INTDIR}/FileCheck)
   else()
     libomptarget_warning_say("Not prepared to run tests on Windows systems.")
   endif()
@@ -80,7 +86,6 @@ else()
   add_lit_testsuite(check-libomptarget
     "Running libomptarget tests"
     ${CMAKE_CURRENT_BINARY_DIR}
-    ARGS "-j 1"
     DEPENDS omptarget omp
   )
   

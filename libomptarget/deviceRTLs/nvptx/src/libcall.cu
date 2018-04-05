@@ -13,8 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "omptarget-nvptx.h"
-NOINLINE void PrintTaskDescr(omptarget_nvptx_TaskDescr *taskDescr, char *title,
-    int level);
+
 #define TICK ((double) 1.0 / 745000000.0)
 
 EXTERN double omp_get_wtick(void) {
@@ -41,7 +40,7 @@ EXTERN void omp_set_num_threads(int num) {
 
 EXTERN int omp_get_num_threads(void) {
   int tid = GetLogicalThreadIdInBlock();
-  int rc = GetNumberOfOmpThreads(tid);
+  int rc = GetNumberOfOmpThreads(tid, isSPMDMode(), isRuntimeUninitialized());
   PRINT(LD_IO, "call omp_get_num_threads() return %d\n", rc);
   return rc;
 }
@@ -54,7 +53,7 @@ EXTERN int omp_get_max_threads(void) {
     rc = GetNumberOfProcsInTeam();
     ASSERT0(LT_FUSSY, rc >= 0, "bad number of threads");
   }
-  PRINT(LD_IO, "call omp_get_num_threads() return %\n", rc);
+  PRINT(LD_IO, "call omp_get_max_threads() return %\n", rc);
   return rc;
 }
 
@@ -68,7 +67,7 @@ EXTERN int omp_get_thread_limit(void) {
 
 EXTERN int omp_get_thread_num() {
   int tid = GetLogicalThreadIdInBlock();
-  int rc = GetOmpThreadId(tid);
+  int rc = GetOmpThreadId(tid, isSPMDMode(), isRuntimeUninitialized());
   PRINT(LD_IO, "call omp_get_thread_num() returns %d\n", rc);
   return rc;
 }

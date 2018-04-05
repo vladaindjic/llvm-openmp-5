@@ -166,7 +166,6 @@ cupti_trace_init
 extern void
 cupti_trace_flush
 (
- CUcontext context
 );
 
 
@@ -185,10 +184,9 @@ cupti_trace_pause
 );
 
 
-extern bool 
-cupti_trace_stop
+extern void 
+cupti_trace_finalize
 (
- CUcontext context
 );
 
 
@@ -198,6 +196,14 @@ cupti_get_num_dropped_records
  CUcontext context,
  uint32_t streamId,
  size_t* dropped 
+);
+
+
+extern void
+cupti_pc_sampling_config
+(
+ CUcontext context,
+ CUpti_ActivityPCSamplingPeriod period
 );
 
 //===----------------------------------------------------------------------===//

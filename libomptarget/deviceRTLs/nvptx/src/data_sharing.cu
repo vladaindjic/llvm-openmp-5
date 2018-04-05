@@ -36,9 +36,9 @@ __device__ static unsigned getMasterThreadId() {
 }
 // The lowest ID among the active threads in the warp.
 __device__ static unsigned getWarpMasterActiveThreadId() {
-  unsigned Mask = __ballot(true);
-  unsigned ShNum = 32 - (getThreadId() & DS_Max_Worker_Warp_Size_Log2_Mask);
-  unsigned Sh = Mask << ShNum;
+  unsigned long long Mask = __BALLOT_SYNC(0xFFFFFFFF, true);
+  unsigned long long ShNum = 32 - (getThreadId() & DS_Max_Worker_Warp_Size_Log2_Mask);
+  unsigned long long Sh = Mask << ShNum;
   return __popc(Sh);
 }
 // Return true if this is the master thread.
@@ -115,16 +115,21 @@ EXTERN void* __kmpc_data_sharing_environment_begin(
     void **SavedSharedFrame,
     int32_t *SavedActiveThreads,
     size_t SharingDataSize,
-    size_t SharingDefaultDataSize
+    size_t SharingDefaultDataSize,
+    int16_t IsOMPRuntimeInitialized
     ){
 
   DSPRINT0(DSFLAG,"Entering __kmpc_data_sharing_environment_begin\n");
+
+  // If the runtime has been elided, used __shared__ memory for master-worker
+  // data sharing.
+  if (!IsOMPRuntimeInitialized) return (void *) &DataSharingState;
 
   DSPRINT(DSFLAG,"Data Size %016llx\n", SharingDataSize);
   DSPRINT(DSFLAG,"Default Data Size %016llx\n", SharingDefaultDataSize);
 
   unsigned WID = getWarpId();
-  unsigned CurActiveThreads = __ballot(true);
+  unsigned CurActiveThreads = __BALLOT_SYNC(0xFFFFFFFF, true);
 
   __kmpc_data_sharing_slot *&SlotP = DataSharingState.SlotPtr[WID];
   void *&StackP = DataSharingState.StackPtr[WID];
@@ -247,7 +252,7 @@ EXTERN void __kmpc_data_sharing_environment_end(
     return;
   }
 
-  int32_t CurActive = __ballot(true);
+  int32_t CurActive = __BALLOT_SYNC(0xFFFFFFFF, true);
 
   // Only the warp master can restore the stack and frame information, and only if there are no other threads left behind in this environment (i.e. the warp diverged and returns in different places). This only works if we assume that threads will converge right after the call site that started the environment.
   if (IsWarpMasterActiveThread()) {
@@ -287,8 +292,14 @@ EXTERN void __kmpc_data_sharing_environment_end(
   return;
 }
 
-EXTERN void* __kmpc_get_data_sharing_environment_frame(int32_t SourceThreadID){
+EXTERN void* __kmpc_get_data_sharing_environment_frame(int32_t SourceThreadID,
+                                                       int16_t IsOMPRuntimeInitialized){
   DSPRINT0(DSFLAG,"Entering __kmpc_get_data_sharing_environment_frame\n");
+
+  // If the runtime has been elided, use __shared__ memory for master-worker
+  // data sharing.  We're reusing the statically allocated data structure
+  // that is used for standard data sharing.
+  if (!IsOMPRuntimeInitialized) return (void *) &DataSharingState;
 
   // Get the frame used by the requested thread.
 

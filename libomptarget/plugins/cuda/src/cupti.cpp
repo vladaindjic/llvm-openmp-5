@@ -24,7 +24,6 @@
 #include <stdlib.h>
 
 
-
 //******************************************************************************
 // local include files
 //******************************************************************************
@@ -144,6 +143,7 @@ external_correlation_activities[] = {
 
 CUpti_ActivityKind
 data_motion_explicit_activities[] = {
+  CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_MEMCPY, 
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -152,7 +152,6 @@ data_motion_explicit_activities[] = {
 CUpti_ActivityKind
 data_motion_implicit_activities[] = {
   CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER,
-  CUPTI_ACTIVITY_KIND_MEMCPY2,
   CUPTI_ACTIVITY_KIND_INVALID
 };
 
@@ -166,6 +165,7 @@ kernel_invocation_activities[] = {
 
 CUpti_ActivityKind
 kernel_execution_activities[] = {
+  CUPTI_ACTIVITY_KIND_CONTEXT,
   CUPTI_ACTIVITY_KIND_FUNCTION,
   CUPTI_ACTIVITY_KIND_PC_SAMPLING,
   CUPTI_ACTIVITY_KIND_INVALID
@@ -181,6 +181,7 @@ overhead_activities[] = {
 
 CUpti_ActivityKind
 driver_activities[] = {
+  CUPTI_ACTIVITY_KIND_DEVICE,
   CUPTI_ACTIVITY_KIND_DRIVER,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -188,6 +189,7 @@ driver_activities[] = {
 
 CUpti_ActivityKind
 runtime_activities[] = {
+  CUPTI_ACTIVITY_KIND_DEVICE,
   CUPTI_ACTIVITY_KIND_RUNTIME,
   CUPTI_ACTIVITY_KIND_INVALID
 };
@@ -281,9 +283,77 @@ cupti_subscriber_callback
       DISPATCH_CALLBACK(cupti_unload_callback, (mrd->moduleId, mrd->pCubin, mrd->cubinSize));
     }
   } else if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
-    if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) || 
-        (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2) ||
-        (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)){
+    if ((cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH) ||                
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeer) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeerAsync) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeer_ptds) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DPeerAsync_ptsz) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunch) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchGrid) ||
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchGridAsync) || 
+      (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)) {
 
       uint64_t correlation_id;
       DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
@@ -292,14 +362,43 @@ cupti_subscriber_callback
         if (cb_info->callbackSite == CUPTI_API_ENTER) {
           CUPTI_CALL(cuptiActivityPushExternalCorrelationId,
             (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
-          DP("push correlation_id %ld\n", correlation_id);
+          DP("Driver push externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
         }
         if (cb_info->callbackSite == CUPTI_API_EXIT) {
           CUPTI_CALL(cuptiActivityPopExternalCorrelationId,
             (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id));
-          DP("pop correlation_id %ld\n", correlation_id);
+          DP("Driver pop externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
         }
       }
+    }
+  } else if (domain == CUPTI_CB_DOMAIN_RUNTIME_API) { 
+    switch (cb_id) {
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_ptsz_v7000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_ptsz_v7000:
+      #if CUPTI_API_VERSION == 10
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_v9000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_ptsz_v9000:
+      case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernelMultiDevice_v9000:  
+      #endif
+      {
+        uint64_t correlation_id;
+        DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
+        if (correlation_id != 0) {
+          if (cb_info->callbackSite == CUPTI_API_ENTER) {
+            DP("Runtime push externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
+            CUPTI_CALL(cuptiActivityPushExternalCorrelationId, (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, correlation_id));
+          }
+          if (cb_info->callbackSite == CUPTI_API_EXIT) {
+            CUPTI_CALL(cuptiActivityPopExternalCorrelationId, (CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &correlation_id));
+            DP("Runtime pop externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
+          }
+        }
+        break;
+      }
+      default:
+        break;
     }
   }
 
@@ -376,7 +475,8 @@ cupti_set_monitoring
   for (;;) {
     CUpti_ActivityKind activity_kind = activity_kinds[i++];
     if (activity_kind == CUPTI_ACTIVITY_KIND_INVALID) break;
-    if (cupti_enabled_activities[context][activity_kind]) {
+    if ((enable && cupti_enabled_activities[context][activity_kind]) ||
+      (!enable && !cupti_enabled_activities[context][activity_kind])) {
       succeeded++;
       continue;
     }
@@ -385,6 +485,9 @@ cupti_set_monitoring
       if (enable) {
         DP("activity %d enabled\n", activity_kind);
         cupti_enabled_activities[context][activity_kind] = true;
+      } else {
+        DP("activity %d disabled\n", activity_kind);
+        cupti_enabled_activities[context][activity_kind] = false;
       }
       succeeded++;
     }
@@ -418,7 +521,6 @@ cupti_trace_init
 void
 cupti_trace_flush
 (
- CUcontext context
 )
 {
   CUPTI_CALL(cuptiActivityFlushAll, (CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
@@ -459,15 +561,12 @@ cupti_trace_pause
 }
 
 
-bool 
-cupti_trace_stop
+void 
+cupti_trace_finalize
 (
- CUcontext context
 )
 {
-  bool succ = true;
-  //CUPTI_CALL(cuptiFinalize, (), succ); not supported
-  return succ;
+  CUPTI_CALL(cuptiFinalize, ());
 }
 
 
@@ -484,6 +583,7 @@ cupti_subscribe_callbacks
     (CUpti_CallbackFunc) cupti_subscriber_callback,
     (void *) NULL));
   CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
   CUPTI_CALL(cuptiEnableDomain, (1, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
@@ -495,6 +595,7 @@ cupti_unsubscribe_callbacks
 {
   CUPTI_CALL(cuptiUnsubscribe, (cupti_subscriber));
   CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
   CUPTI_CALL(cuptiEnableDomain, (0, cupti_subscriber, CUPTI_CB_DOMAIN_RESOURCE));
 }
 
@@ -577,4 +678,19 @@ cupti_get_num_dropped_records
 )
 {
   CUPTI_CALL(cuptiActivityGetNumDroppedRecords, (context, streamId, dropped));
+}
+
+
+void
+cupti_pc_sampling_config
+(
+ CUcontext context,
+ CUpti_ActivityPCSamplingPeriod period
+)
+{
+  CUpti_ActivityPCSamplingConfig config;
+  config.size = 0;
+  config.samplingPeriod = period;
+  config.samplingPeriod2 = 0;
+  CUPTI_CALL(cuptiActivityConfigurePCSampling, (context, &config));
 }

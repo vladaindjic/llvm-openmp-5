@@ -1,3 +1,4 @@
+// RUN: %libomptarget-compilexx-run-and-check-aarch64-unknown-linux-gnu
 // RUN: %libomptarget-compilexx-run-and-check-powerpc64-ibm-linux-gnu
 // RUN: %libomptarget-compilexx-run-and-check-powerpc64le-ibm-linux-gnu
 // RUN: %libomptarget-compilexx-run-and-check-x86_64-pc-linux-gnu
@@ -8,7 +9,7 @@
 int main(void) {
   int isHost = 0;
 
-#pragma omp target
+#pragma omp target map(from: isHost)
   { isHost = omp_is_initial_device(); }
 
   if (isHost < 0) {
