@@ -609,7 +609,8 @@ cupti_buffer_completion_callback
   if (dropped != 0) {
     DP("dropped %u activity records\n", (unsigned int) dropped);
   }   
-  free(buffer);
+  //TODO(keren): tell john
+  //free(buffer);
   DP("leave cupti_buffer_completion_callback\n"); 
 }
 
