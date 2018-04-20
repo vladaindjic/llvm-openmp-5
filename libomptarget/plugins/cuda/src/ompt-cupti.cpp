@@ -553,13 +553,11 @@ static void
 device_completion_callback
 (
  uint64_t relative_device_id,
- CUpti_Activity *start,
- CUpti_Activity *end
+ uint8_t *ustart,
+ uint8_t *uend
 )
 {
   const int BUFFER_NOT_OWNED = 0;
-  uint8_t *ustart = (uint8_t *) start;
-  uint8_t *uend = (uint8_t *) end;
   size_t bytes = uend - ustart;
 
   ompt_device_info_t *di = ompt_device_info_from_id(relative_device_id);
@@ -595,13 +593,13 @@ cupti_buffer_completion_callback
       status = cupti_buffer_cursor_advance(buffer, validSize, &activity);
       
       if (activity->kind == CUPTI_ACTIVITY_KIND_CONTEXT) {
-        device_completion_callback(relative_device_id, start, activity);
+        device_completion_callback(relative_device_id, (uint8_t *)start, (uint8_t *)activity);
         start = activity;
         DECLARE_CAST(CUpti_ActivityContext, ac, activity);
         relative_device_id = ac->deviceId;
       }
     }
-    device_completion_callback(relative_device_id, start, activity);
+    device_completion_callback(relative_device_id, (uint8_t *)start, (uint8_t *)(buffer + validSize));
   }
 
   size_t dropped;
