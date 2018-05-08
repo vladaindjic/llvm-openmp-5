@@ -3354,7 +3354,8 @@ extern void __kmp_end_split_barrier(enum barrier_type bt, int gtid);
  */
 enum microtask_context_e {
   microtask_context_program,
-  microtask_context_library, 
+  microtask_context_intel, 
+  microtask_context_gomp_parallel, 
   microtask_context_last
 };
 

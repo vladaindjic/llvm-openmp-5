@@ -451,7 +451,7 @@ void xexpand(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
     __kmp_join_call(&loc, gtid
 #if OMPT_SUPPORT
                     ,
-                    microtask_context_program
+                    microtask_context_gomp_parallel
 #endif
                     );
   } else {
@@ -474,7 +474,7 @@ void xexpand(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
       if (ompt_callbacks.ompt_callback(ompt_event_parallel_end)) {
         ompt_callbacks.ompt_callback(ompt_event_parallel_end)(
             parallel_id, parent_task_info->task_id,
-            OMPT_INVOKER(microtask_context_program));
+            OMPT_INVOKER(microtask_context_gomp_parallel));
       }
 
       parent_task_info->frame.reenter_runtime_frame = NULL;
@@ -1079,7 +1079,7 @@ void xexpand(KMP_API_NAME_GOMP_PARALLEL)(void (*task)(void *), void *data,
     if (flags != 0) {
       __kmp_push_proc_bind(&loc, gtid, (kmp_proc_bind_t)flags);
     }
-    __kmp_GOMP_fork_call(&loc, gtid, task, microtask_context_library,
+    __kmp_GOMP_fork_call(&loc, gtid, task, microtask_context_gomp_parallel,
                          (microtask_t)__kmp_GOMP_microtask_wrapper, 2, task,
                          data);
   } else {

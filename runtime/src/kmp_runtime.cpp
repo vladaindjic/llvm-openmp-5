@@ -1720,7 +1720,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
       __kmpc_serialized_parallel(loc, gtid);
 
-      if (microtask_context == microtask_context_library) {
+      if (microtask_context == microtask_context_intel) {
         /* TODO this sucks, use the compiler itself to pass args! :) */
         master_th->th.th_serial_team->t.t_ident = loc;
 #if OMP_40_ENABLED
@@ -1906,7 +1906,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 #if OMP_40_ENABLED
         }
 #endif /* OMP_40_ENABLED */
-      } else if (microtask_context == microtask_context_program) {
+      } else if (microtask_context != microtask_context_intel) {
 #if OMPT_SUPPORT
         ompt_lw_taskteam_t *lwt =
             (ompt_lw_taskteam_t *)__kmp_allocate(sizeof(ompt_lw_taskteam_t));
@@ -2233,7 +2233,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
                     root, team, master_th, gtid));
     }
 
-    if (microtask_context == microtask_context_program) {
+    if (microtask_context != microtask_context_intel) {
       KA_TRACE(20, ("__kmp_fork_call: parallel exit T#%d\n", gtid));
       return TRUE;
     }
@@ -7002,7 +7002,7 @@ void __kmp_teams_master(int gtid) {
 #if INCLUDE_SSC_MARKS
   SSC_MARK_FORKING();
 #endif
-  __kmp_fork_call(loc, gtid, microtask_context_library, team->t.t_argc,
+  __kmp_fork_call(loc, gtid, microtask_context_intel, team->t.t_argc,
 #if OMPT_SUPPORT
                   (void *)thr->th.th_teams_microtask, // "unwrapped" task
 #endif
@@ -7017,7 +7017,7 @@ void __kmp_teams_master(int gtid) {
   __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                   ,
-                  microtask_context_library
+                  microtask_context_intel
 #endif
                   ,
                   1);
