@@ -298,7 +298,7 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
 #if INCLUDE_SSC_MARKS
     SSC_MARK_FORKING();
 #endif
-    __kmp_fork_call(loc, gtid, fork_context_intel, argc,
+    __kmp_fork_call(loc, gtid, microtask_context_library, argc,
 #if OMPT_SUPPORT
                     VOLATILE_CAST(void *) microtask, // "unwrapped" task
 #endif
@@ -317,7 +317,7 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
     __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                     ,
-                    fork_context_intel
+                    microtask_context_library
 #endif
                     );
 
@@ -389,7 +389,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
   KMP_DEBUG_ASSERT(this_thr->th.th_teams_size.nteams >= 1);
   KMP_DEBUG_ASSERT(this_thr->th.th_teams_size.nth >= 1);
 
-  __kmp_fork_call(loc, gtid, fork_context_intel, argc,
+  __kmp_fork_call(loc, gtid, microtask_context_library, argc,
 #if OMPT_SUPPORT
                   VOLATILE_CAST(void *) microtask, // "unwrapped" task
 #endif
@@ -405,7 +405,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
   __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                   ,
-                  fork_context_intel
+                  microtask_context_library
 #endif
                   );
 
