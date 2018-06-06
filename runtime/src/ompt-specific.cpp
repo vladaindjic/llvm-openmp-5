@@ -23,12 +23,12 @@
 //   data. using a shared variable instead is simple. I leave it to intel to
 //   sort out how to implement a higher performance version in their runtime.
 
+#if 1
+#define NEXT_ID(id_ptr, tid)                                                   \
+  (((*id_ptr)++ << OMPT_THREAD_ID_BITS) | (tid))
+#else
 // when using fetch_and_add to generate the IDs, there isn't any reason to waste
 // bits for thread id.
-#if 0
-#define NEXT_ID(id_ptr, tid)                                                   \
-  ((KMP_TEST_THEN_INC64(id_ptr) << OMPT_THREAD_ID_BITS) | (tid))
-#else
 #define NEXT_ID(id_ptr, tid) (KMP_TEST_THEN_INC64((volatile kmp_int64 *)id_ptr))
 #endif
 
@@ -142,7 +142,7 @@ __ompt_force_initialization()
 //----------------------------------------------------------
 
 ompt_parallel_id_t __ompt_thread_id_new() {
-  static uint64_t ompt_thread_id = 1;
+static __thread uint64_t ompt_thread_id = 1;
   return NEXT_ID(&ompt_thread_id, 0);
 }
 
@@ -202,7 +202,7 @@ void *__ompt_get_idle_frame_internal(void) {
 //----------------------------------------------------------
 
 ompt_parallel_id_t __ompt_parallel_id_new(int gtid) {
-  static uint64_t ompt_parallel_id = 1;
+static __thread uint64_t ompt_parallel_id = 1;
   return gtid >= 0 ? NEXT_ID(&ompt_parallel_id, gtid) : 0;
 }
 
@@ -260,7 +260,7 @@ ompt_lw_taskteam_t *__ompt_lw_taskteam_unlink(kmp_info_t *thr) {
 //----------------------------------------------------------
 
 ompt_task_id_t __ompt_task_id_new(int gtid) {
-  static uint64_t ompt_task_id = 1;
+static __thread uint64_t ompt_task_id = 1;
   return NEXT_ID(&ompt_task_id, gtid);
 }
 
