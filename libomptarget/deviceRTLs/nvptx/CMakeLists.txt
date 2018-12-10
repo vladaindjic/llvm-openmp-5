@@ -72,7 +72,7 @@ if(LIBOMPTARGET_DEP_CUDA_FOUND)
 
   # Activate RTL message dumps if requested by the user.
   if(LIBOMPTARGET_NVPTX_DEBUG)
-    set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=-1 -g --ptxas-options=-v)
+    set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=-1 -g --ptxas-options=-v -lineinfo)
   endif()
 
   # NVPTX runtime library has to be statically linked. Dynamic linking is not
@@ -81,7 +81,7 @@ if(LIBOMPTARGET_DEP_CUDA_FOUND)
   set(CUDA_SEPARABLE_COMPILATION ON)
 
   cuda_add_library(omptarget-nvptx STATIC ${cuda_src_files} ${omp_data_objects}
-      OPTIONS ${CUDA_ARCH} ${CUDA_DEBUG})
+      OPTIONS ${CUDA_ARCH} ${CUDA_DEBUG} -O2)
 
   # Install device RTL under the lib destination folder.
   install(TARGETS omptarget-nvptx ARCHIVE DESTINATION "lib")
