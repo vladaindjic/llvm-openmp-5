@@ -291,14 +291,14 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
         ompt_frame = &(
             parent_team->t.t_implicit_task_taskdata[tid].ompt_task_info.frame);
       }
-      ompt_frame->reenter_runtime_frame = __builtin_frame_address(1);
+      ompt_frame->reenter_runtime_frame = __builtin_frame_address(0);
     }
 #endif
 
 #if INCLUDE_SSC_MARKS
     SSC_MARK_FORKING();
 #endif
-    __kmp_fork_call(loc, gtid, fork_context_intel, argc,
+    __kmp_fork_call(loc, gtid, microtask_context_intel, argc,
 #if OMPT_SUPPORT
                     VOLATILE_CAST(void *) microtask, // "unwrapped" task
 #endif
@@ -317,7 +317,7 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
     __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                     ,
-                    fork_context_intel
+                    microtask_context_intel
 #endif
                     );
 
@@ -376,7 +376,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
   if (ompt_enabled) {
     parent_team->t.t_implicit_task_taskdata[tid]
         .ompt_task_info.frame.reenter_runtime_frame =
-        __builtin_frame_address(1);
+        __builtin_frame_address(0);
   }
 #endif
 
@@ -389,7 +389,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
   KMP_DEBUG_ASSERT(this_thr->th.th_teams_size.nteams >= 1);
   KMP_DEBUG_ASSERT(this_thr->th.th_teams_size.nth >= 1);
 
-  __kmp_fork_call(loc, gtid, fork_context_intel, argc,
+  __kmp_fork_call(loc, gtid, microtask_context_intel, argc,
 #if OMPT_SUPPORT
                   VOLATILE_CAST(void *) microtask, // "unwrapped" task
 #endif
@@ -405,7 +405,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
   __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                   ,
-                  fork_context_intel
+                  microtask_context_intel
 #endif
                   );
 
@@ -649,7 +649,7 @@ void __kmpc_barrier(ident_t *loc, kmp_int32 global_tid) {
   if (ompt_enabled) {
     ompt_frame = __ompt_get_task_frame_internal(0);
     if (ompt_frame->reenter_runtime_frame == NULL)
-      ompt_frame->reenter_runtime_frame = __builtin_frame_address(1);
+      ompt_frame->reenter_runtime_frame = __builtin_frame_address(0);
   }
 #endif
   __kmp_threads[global_tid]->th.th_ident = loc;

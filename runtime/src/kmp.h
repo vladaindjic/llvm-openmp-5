@@ -3352,14 +3352,15 @@ extern void __kmp_end_split_barrier(enum barrier_type bt, int gtid);
  * Tell the fork call which compiler generated the fork call, and therefore how
  * to deal with the call.
  */
-enum fork_context_e {
-  fork_context_gnu, /**< Called from GNU generated code, so must not invoke the
-                       microtask internally. */
-  fork_context_intel, /**< Called from Intel generated code.  */
-  fork_context_last
+enum microtask_context_e {
+  microtask_context_program,
+  microtask_context_intel, 
+  microtask_context_gomp_parallel, 
+  microtask_context_last
 };
+
 extern int __kmp_fork_call(ident_t *loc, int gtid,
-                           enum fork_context_e fork_context, kmp_int32 argc,
+                           enum microtask_context_e microtask_context, kmp_int32 argc,
 #if OMPT_SUPPORT
                            void *unwrapped_task,
 #endif
@@ -3375,7 +3376,7 @@ extern int __kmp_fork_call(ident_t *loc, int gtid,
 extern void __kmp_join_call(ident_t *loc, int gtid
 #if OMPT_SUPPORT
                             ,
-                            enum fork_context_e fork_context
+                            enum microtask_context_e microtask_context
 #endif
 #if OMP_40_ENABLED
                             ,

@@ -1375,7 +1375,7 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
 /* most of the work for a fork */
 /* return true if we really went parallel, false if serialized */
 int __kmp_fork_call(ident_t *loc, int gtid,
-                    enum fork_context_e call_context, // Intel, GNU, ...
+                    enum microtask_context_e microtask_context, // Intel, GNU, ...
                     kmp_int32 argc,
 #if OMPT_SUPPORT
                     void *unwrapped_task,
@@ -1477,7 +1477,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
       ompt_callbacks.ompt_callback(ompt_event_parallel_begin)(
           ompt_task_id, ompt_frame, ompt_parallel_id, team_size, unwrapped_task,
-          OMPT_INVOKER(call_context));
+          OMPT_INVOKER(microtask_context));
     }
 #endif
 
@@ -1569,7 +1569,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
           if (ompt_callbacks.ompt_callback(ompt_event_parallel_end)) {
             ompt_callbacks.ompt_callback(ompt_event_parallel_end)(
-                ompt_parallel_id, ompt_task_id, OMPT_INVOKER(call_context));
+                ompt_parallel_id, ompt_task_id, OMPT_INVOKER(microtask_context));
           }
           master_th->th.ompt_thread_info.state = ompt_state_overhead;
         }
@@ -1720,7 +1720,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
       __kmpc_serialized_parallel(loc, gtid);
 
-      if (call_context == fork_context_intel) {
+      if (microtask_context == microtask_context_intel) {
         /* TODO this sucks, use the compiler itself to pass args! :) */
         master_th->th.th_serial_team->t.t_ident = loc;
 #if OMP_40_ENABLED
@@ -1789,7 +1789,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
             if (ompt_callbacks.ompt_callback(ompt_event_parallel_end)) {
               ompt_callbacks.ompt_callback(ompt_event_parallel_end)(
-                  ompt_parallel_id, ompt_task_id, OMPT_INVOKER(call_context));
+                  ompt_parallel_id, ompt_task_id, OMPT_INVOKER(microtask_context));
             }
             master_th->th.ompt_thread_info.state = ompt_state_overhead;
           }
@@ -1898,7 +1898,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
             if (ompt_callbacks.ompt_callback(ompt_event_parallel_end)) {
               ompt_callbacks.ompt_callback(ompt_event_parallel_end)(
-                  ompt_parallel_id, ompt_task_id, OMPT_INVOKER(call_context));
+                  ompt_parallel_id, ompt_task_id, OMPT_INVOKER(microtask_context));
             }
             master_th->th.ompt_thread_info.state = ompt_state_overhead;
           }
@@ -1906,7 +1906,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 #if OMP_40_ENABLED
         }
 #endif /* OMP_40_ENABLED */
-      } else if (call_context == fork_context_gnu) {
+      } else if (microtask_context != microtask_context_intel) {
 #if OMPT_SUPPORT
         ompt_lw_taskteam_t *lwt =
             (ompt_lw_taskteam_t *)__kmp_allocate(sizeof(ompt_lw_taskteam_t));
@@ -1922,8 +1922,8 @@ int __kmp_fork_call(ident_t *loc, int gtid,
         KA_TRACE(20, ("__kmp_fork_call: T#%d serial exit\n", gtid));
         return FALSE;
       } else {
-        KMP_ASSERT2(call_context < fork_context_last,
-                    "__kmp_fork_call: unknown fork_context parameter");
+        KMP_ASSERT2(microtask_context < microtask_context_last,
+                    "__kmp_fork_call: unknown microtask_context parameter");
       }
 
       KA_TRACE(20, ("__kmp_fork_call: T#%d serial exit\n", gtid));
@@ -2233,7 +2233,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
                     root, team, master_th, gtid));
     }
 
-    if (call_context == fork_context_gnu) {
+    if (microtask_context != microtask_context_intel) {
       KA_TRACE(20, ("__kmp_fork_call: parallel exit T#%d\n", gtid));
       return TRUE;
     }
@@ -2276,11 +2276,11 @@ static inline void __kmp_join_restore_state(kmp_info_t *thread,
 
 static inline void __kmp_join_ompt(kmp_info_t *thread, kmp_team_t *team,
                                    ompt_parallel_id_t parallel_id,
-                                   fork_context_e fork_context) {
+                                   enum microtask_context_e microtask_context) {
   ompt_task_info_t *task_info = __ompt_get_taskinfo(0);
   if (ompt_callbacks.ompt_callback(ompt_event_parallel_end)) {
     ompt_callbacks.ompt_callback(ompt_event_parallel_end)(
-        parallel_id, task_info->task_id, OMPT_INVOKER(fork_context));
+        parallel_id, task_info->task_id, OMPT_INVOKER(microtask_context));
   }
 
   task_info->frame.reenter_runtime_frame = NULL;
@@ -2291,7 +2291,7 @@ static inline void __kmp_join_ompt(kmp_info_t *thread, kmp_team_t *team,
 void __kmp_join_call(ident_t *loc, int gtid
 #if OMPT_SUPPORT
                      ,
-                     enum fork_context_e fork_context
+                     enum microtask_context_e microtask_context
 #endif
 #if OMP_40_ENABLED
                      ,
@@ -2456,7 +2456,7 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
     if (ompt_enabled) {
-      __kmp_join_ompt(master_th, parent_team, parallel_id, fork_context);
+      __kmp_join_ompt(master_th, parent_team, parallel_id, microtask_context);
     }
 #endif
 
@@ -2565,7 +2565,7 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
   if (ompt_enabled) {
-    __kmp_join_ompt(master_th, parent_team, parallel_id, fork_context);
+    __kmp_join_ompt(master_th, parent_team, parallel_id, microtask_context);
   }
 #endif
 
@@ -7002,7 +7002,7 @@ void __kmp_teams_master(int gtid) {
 #if INCLUDE_SSC_MARKS
   SSC_MARK_FORKING();
 #endif
-  __kmp_fork_call(loc, gtid, fork_context_intel, team->t.t_argc,
+  __kmp_fork_call(loc, gtid, microtask_context_intel, team->t.t_argc,
 #if OMPT_SUPPORT
                   (void *)thr->th.th_teams_microtask, // "unwrapped" task
 #endif
@@ -7017,7 +7017,7 @@ void __kmp_teams_master(int gtid) {
   __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                   ,
-                  fork_context_intel
+                  microtask_context_intel
 #endif
                   ,
                   1);
