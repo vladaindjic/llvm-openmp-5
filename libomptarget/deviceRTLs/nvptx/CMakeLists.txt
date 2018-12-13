@@ -75,13 +75,17 @@ if(LIBOMPTARGET_DEP_CUDA_FOUND)
     set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=-1 -g --ptxas-options=-v -lineinfo)
   endif()
 
+  if(LIBOMPTARGET_NVPTX_LINEINFO)
+    set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=0 -g --ptxas-options=-v -lineinfo -O2)
+  endif()
+
   # NVPTX runtime library has to be statically linked. Dynamic linking is not
   # yet supported by the CUDA toolchain on the device.
   set(BUILD_SHARED_LIBS OFF)
   set(CUDA_SEPARABLE_COMPILATION ON)
 
   cuda_add_library(omptarget-nvptx STATIC ${cuda_src_files} ${omp_data_objects}
-      OPTIONS ${CUDA_ARCH} ${CUDA_DEBUG} -O2)
+      OPTIONS ${CUDA_ARCH} ${CUDA_DEBUG})
 
   # Install device RTL under the lib destination folder.
   install(TARGETS omptarget-nvptx ARCHIVE DESTINATION "lib")

@@ -42,8 +42,11 @@
 #include "rtl.h" 
 
 #undef DP
+#ifdef OMPTARGET_CUPTI_DEBUG
 #define DP(...) DEBUGP("cupti ", __VA_ARGS__)
-
+#else
+#define DP(...)
+#endif
 
 
 //******************************************************************************
