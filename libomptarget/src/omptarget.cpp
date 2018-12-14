@@ -38,7 +38,6 @@
 // macros
 //******************************************************************************
 
-#define DP(...) DEBUGP("Libomptarget", __VA_ARGS__)
 #ifdef OMPTARGET_DEBUG
 static int DebugLevel = 1;
 
