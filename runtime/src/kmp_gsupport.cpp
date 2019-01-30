@@ -1089,6 +1089,13 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
     OMPT_STORE_RETURN_ADDRESS(gtid);                                           \
   }
 
+#define OMPT_LOOP_BEFORE_TASK()                                                \
+  if (ompt_enabled.enabled) {                                                  \
+     ompt_frame_t *inner_frame;                                                \
+    __ompt_get_task_info_internal(0, NULL, NULL, &inner_frame, NULL, NULL);    \
+    inner_frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);                   \
+  }
+
 #define OMPT_LOOP_POST()                                                       \
   if (ompt_enabled.enabled) {                                                  \
     parent_frame->enter_frame = ompt_data_none;                                \
@@ -1097,6 +1104,8 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
 #else
 
 #define OMPT_LOOP_PRE()
+
+#define OMPT_LOOP_BEFORE_TASK()
 
 #define OMPT_LOOP_POST()
 
@@ -1467,7 +1476,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_SECTIONS)(void (*task)(void *),
   KA_TRACE(20, ("GOMP_parallel_sections exit: T#%d\n", gtid));
 }
 
-#define PARALLEL_LOOP(func, schedule, ompt_pre, ompt_post)                     \
+#define PARALLEL_LOOP(func, schedule, ompt_pre, ompt_before_task, ompt_post)   \
   void func(void (*task)(void *), void *data, unsigned num_threads, long lb,   \
             long ub, long str, long chunk_sz, unsigned flags) {                \
     int gtid = __kmp_entry_gtid();                                             \
@@ -1498,6 +1507,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_SECTIONS)(void (*task)(void *),
     KMP_DISPATCH_INIT(&loc, gtid, (schedule), lb,                              \
                       (str > 0) ? (ub - 1) : (ub + 1), str, chunk_sz,          \
                       (schedule) != kmp_sch_static);                           \
+    ompt_before_task();                                                        \
     task(data);                                                                \
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)();                         \
     ompt_post();                                                               \
@@ -1506,13 +1516,13 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_SECTIONS)(void (*task)(void *),
   }
 
 PARALLEL_LOOP(KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_STATIC),
-              kmp_sch_static, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+              kmp_sch_static, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK, OMPT_LOOP_POST)
 PARALLEL_LOOP(KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_DYNAMIC),
-              kmp_sch_dynamic_chunked, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+              kmp_sch_dynamic_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK, OMPT_LOOP_POST)
 PARALLEL_LOOP(KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_GUIDED),
-              kmp_sch_guided_chunked, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+              kmp_sch_guided_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK, OMPT_LOOP_POST)
 PARALLEL_LOOP(KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_RUNTIME),
-              kmp_sch_runtime, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+              kmp_sch_runtime, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK, OMPT_LOOP_POST)
 
 void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_TASKGROUP_START)(void) {
   int gtid = __kmp_entry_gtid();
