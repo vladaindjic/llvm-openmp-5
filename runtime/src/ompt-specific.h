@@ -54,12 +54,12 @@ static uint64_t __ompt_get_get_unique_id_internal();
  * macros
  ****************************************************************************/
 
-#define OMPT_CUR_TASK_INFO(thr) (&(thr->th.th_current_task->ompt_task_info))
+#define OMPT_CUR_TASK_INFO(thr) (&((thr)->th.th_current_task->ompt_task_info))
 #define OMPT_CUR_TASK_DATA(thr)                                                \
-  (&(thr->th.th_current_task->ompt_task_info.task_data))
-#define OMPT_CUR_TEAM_INFO(thr) (&(thr->th.th_team->t.ompt_team_info))
+  (&((thr)->th.th_current_task->ompt_task_info.task_data))
+#define OMPT_CUR_TEAM_INFO(thr) (&((thr)->th.th_team->t.ompt_team_info))
 #define OMPT_CUR_TEAM_DATA(thr)                                                \
-  (&(thr->th.th_team->t.ompt_team_info.parallel_data))
+  (&((thr)->th.th_team->t.ompt_team_info.parallel_data))
 
 #define OMPT_HAVE_WEAK_ATTRIBUTE KMP_HAVE_WEAK_ATTRIBUTE
 #define OMPT_HAVE_PSAPI KMP_HAVE_PSAPI
