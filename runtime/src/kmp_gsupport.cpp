@@ -400,14 +400,17 @@ static
   int ompt_team_size;
   if (ompt_enabled.enabled) {
     ompt_team_info_t *team_info = __ompt_get_teaminfo(0, NULL);
-    ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
+    ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(thr);
 
     // implicit task callback
     if (ompt_enabled.ompt_callback_implicit_task) {
+      ompt_frame_t *frame = &task_info->frame;
       ompt_team_size = __kmp_team_from_gtid(gtid)->t.t_nproc;
+      frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
           ompt_scope_begin, &(team_info->parallel_data),
           &(task_info->task_data), ompt_team_size, __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+      frame->exit_frame.ptr = 0;
       task_info->thread_num = __kmp_tid_from_gtid(gtid);
     }
     thr->th.ompt_thread_info.state = ompt_state_work_parallel;
@@ -1043,7 +1046,7 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
 //
 // There are no ull versions (yet).
 
-#define PARALLEL_LOOP_START(func, schedule, ompt_pre, ompt_post)               \
+#define PARALLEL_LOOP_START(func, schedule, ompt_pre, ompt_start, ompt_post) \
   void func(void (*task)(void *), void *data, unsigned num_threads, long lb,   \
             long ub, long str, long chunk_sz) {                                \
     int gtid = __kmp_entry_gtid();                                             \
@@ -1075,6 +1078,7 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
                       (schedule) != kmp_sch_static);                           \
                                                                                \
     ompt_post();                                                               \
+    ompt_start();                                                              \
                                                                                \
     KA_TRACE(20, (KMP_STR(func) " exit: T#%d\n", gtid));                       \
   }
@@ -1084,16 +1088,21 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
 #define OMPT_LOOP_PRE()                                                        \
   ompt_frame_t *parent_frame;                                                  \
   if (ompt_enabled.enabled) {                                                  \
-    __ompt_get_task_info_internal(0, NULL, NULL, &parent_frame, NULL, NULL);   \
+    parent_frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;            \
     parent_frame->enter_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);                 \
     OMPT_STORE_RETURN_ADDRESS(gtid);                                           \
   }
 
 #define OMPT_LOOP_BEFORE_TASK()                                                \
   if (ompt_enabled.enabled) {                                                  \
-     ompt_frame_t *inner_frame;                                                \
-    __ompt_get_task_info_internal(0, NULL, NULL, &inner_frame, NULL, NULL);    \
-    inner_frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);                   \
+    ompt_frame_t *frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;     \
+    frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);                         \
+  }
+
+#define OMPT_LOOP_BEFORE_TASK_START()                                          \
+  if (ompt_enabled.enabled) {                                                  \
+    ompt_frame_t *frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;     \
+    frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);                         \
   }
 
 #define OMPT_LOOP_POST()                                                       \
@@ -1107,22 +1116,28 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
 
 #define OMPT_LOOP_BEFORE_TASK()
 
+#define OMPT_LOOP_BEFORE_TASK_START()
+
 #define OMPT_LOOP_POST()
 
 #endif
 
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_STATIC_START),
-    kmp_sch_static, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+    kmp_sch_static, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START, 
+    OMPT_LOOP_POST)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_DYNAMIC_START),
-    kmp_sch_dynamic_chunked, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+    kmp_sch_dynamic_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START, 
+    OMPT_LOOP_POST)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_GUIDED_START),
-    kmp_sch_guided_chunked, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+    kmp_sch_guided_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START, 
+    OMPT_LOOP_POST)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_RUNTIME_START),
-    kmp_sch_runtime, OMPT_LOOP_PRE, OMPT_LOOP_POST)
+    kmp_sch_runtime, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START, 
+    OMPT_LOOP_POST)
 
 // Tasking constructs
 
@@ -1396,10 +1411,10 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL)(void (*task)(void *),
   KA_TRACE(20, ("GOMP_parallel: T#%d\n", gtid));
 
 #if OMPT_SUPPORT
-  ompt_task_info_t *parent_task_info, *task_info;
+  ompt_frame_t *parent_frame, *child_frame;
   if (ompt_enabled.enabled) {
-    parent_task_info = __ompt_get_task_info_object(0);
-    parent_task_info->frame.enter_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
+    parent_frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;
+    parent_frame->enter_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
     OMPT_STORE_RETURN_ADDRESS(gtid);
   }
 #endif
@@ -1418,8 +1433,8 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL)(void (*task)(void *),
   }
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
-    task_info = __ompt_get_task_info_object(0);
-    task_info->frame.exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
+    child_frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;
+    child_frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
   }
 #endif
   task(data);
@@ -1431,8 +1446,8 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL)(void (*task)(void *),
   KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)();
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
-    task_info->frame.exit_frame = ompt_data_none;
-    parent_task_info->frame.enter_frame = ompt_data_none;
+    child_frame->exit_frame = ompt_data_none;
+    parent_frame->enter_frame = ompt_data_none;
   }
 #endif
 }

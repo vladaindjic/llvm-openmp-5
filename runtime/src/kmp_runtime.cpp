@@ -1604,9 +1604,11 @@ int __kmp_fork_call(ident_t *loc, int gtid,
           /* OMPT implicit task begin */
           implicit_task_data = OMPT_CUR_TASK_DATA(master_th);
           if (ompt_enabled.ompt_callback_implicit_task) {
+            *exit_runtime_p = OMPT_GET_FRAME_ADDRESS(0);
             ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
                 ompt_scope_begin, OMPT_CUR_TEAM_DATA(master_th),
                 implicit_task_data, 1, __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+            *exit_runtime_p = NULL;
             OMPT_CUR_TASK_INFO(master_th)
                 ->thread_num = __kmp_tid_from_gtid(gtid);
           }
@@ -1634,9 +1636,11 @@ int __kmp_fork_call(ident_t *loc, int gtid,
         if (ompt_enabled.enabled) {
           OMPT_CUR_TASK_INFO(master_th)->frame.exit_frame = ompt_data_none;
           if (ompt_enabled.ompt_callback_implicit_task) {
+            *exit_runtime_p = OMPT_GET_FRAME_ADDRESS(0);
             ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
                 ompt_scope_end, NULL, implicit_task_data, 1,
                 OMPT_CUR_TASK_INFO(master_th)->thread_num, ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+            *exit_runtime_p = NULL;
           }
           __ompt_lw_taskteam_unlink(master_th);
 
@@ -1816,9 +1820,11 @@ int __kmp_fork_call(ident_t *loc, int gtid,
             task_info = OMPT_CUR_TASK_INFO(master_th);
             exit_runtime_p = &(task_info->frame.exit_frame.ptr);
             if (ompt_enabled.ompt_callback_implicit_task) {
+              *exit_runtime_p = OMPT_GET_FRAME_ADDRESS(0);
               ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
                   ompt_scope_begin, OMPT_CUR_TEAM_DATA(master_th),
                   &(task_info->task_data), 1, __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+              *exit_runtime_p = NULL;
               OMPT_CUR_TASK_INFO(master_th)
                   ->thread_num = __kmp_tid_from_gtid(gtid);
             }
@@ -2547,9 +2553,11 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
-    ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
+    ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(__kmp_threads[gtid]);
     if (ompt_enabled.ompt_callback_implicit_task) {
       int ompt_team_size = team->t.t_nproc;
+      
+      task_info->frame.exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
           ompt_scope_end, NULL, &(task_info->task_data), ompt_team_size,
           OMPT_CUR_TASK_INFO(master_th)->thread_num, ompt_task_implicit); // TODO: Can this be ompt_task_initial?
@@ -5744,8 +5752,7 @@ void *__kmp_launch_thread(kmp_info_t *this_thr) {
 #if OMPT_SUPPORT
       if (ompt_enabled.enabled) {
         /* no frame set while outside task */
-        __ompt_get_task_info_object(0)->frame.exit_frame = ompt_data_none;
-
+	OMPT_CUR_TASK_INFO(this_thr)->frame.exit_frame = ompt_data_none;
         this_thr->th.ompt_thread_info.state = ompt_state_overhead;
       }
 #endif
@@ -7055,9 +7062,11 @@ int __kmp_invoke_task_func(int gtid) {
   my_parallel_data = &(team->t.ompt_team_info.parallel_data);
   if (ompt_enabled.ompt_callback_implicit_task) {
     ompt_team_size = team->t.t_nproc;
+    *exit_runtime_p = OMPT_GET_FRAME_ADDRESS(0);
     ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
         ompt_scope_begin, my_parallel_data, my_task_data, ompt_team_size,
         __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+    *exit_runtime_p = NULL;
     OMPT_CUR_TASK_INFO(this_thr)->thread_num = __kmp_tid_from_gtid(gtid);
   }
 #endif
@@ -7306,8 +7315,11 @@ void __kmp_internal_join(ident_t *id, int gtid, kmp_team_t *team) {
     }
 #endif
     if (!KMP_MASTER_TID(ds_tid) && ompt_enabled.ompt_callback_implicit_task) {
+      ompt_frame_t *frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;
+      frame->exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
           ompt_scope_end, NULL, task_data, 0, ds_tid, ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+      frame->exit_frame.ptr = 0;
     }
   }
 #endif

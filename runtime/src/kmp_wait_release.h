@@ -138,8 +138,17 @@ static void __ompt_implicit_task_end(kmp_info_t *this_thr,
 #endif
     if (!KMP_MASTER_TID(ds_tid)) {
       if (ompt_enabled.ompt_callback_implicit_task) {
+        kmp_taskdata_t *task = this_thr->th.th_current_task;
+	// task might be NULL for a task that's ending
+	if (task) {
+	  task->ompt_task_info.frame.exit_frame.ptr = 
+	    OMPT_GET_FRAME_ADDRESS(0);
+	}
         ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
             ompt_scope_end, NULL, tId, 0, ds_tid, ompt_task_implicit);
+	if (task) {
+	  task->ompt_task_info.frame.exit_frame.ptr = 0;
+	}
       }
       // return to idle state
       this_thr->th.ompt_thread_info.state = ompt_state_idle;
