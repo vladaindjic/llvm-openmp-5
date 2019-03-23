@@ -510,11 +510,15 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled &&
       this_thr->th.ompt_thread_info.state != ompt_state_overhead) {
-    OMPT_CUR_TASK_INFO(this_thr)->frame.exit_frame = ompt_data_none;
     if (ompt_enabled.ompt_callback_implicit_task) {
+      ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(this_thr);
+      ompt_frame_t *task_frame = &task_info->frame;
+      OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		     (ompt_frame_runtime | ompt_frame_framepointer));
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
           ompt_scope_end, NULL, OMPT_CUR_TASK_DATA(this_thr), 1,
-          OMPT_CUR_TASK_INFO(this_thr)->thread_num, ompt_task_implicit);
+          task_info->thread_num, ompt_task_implicit);
+      OMPT_FRAME_CLEAR(task_frame, exit);
     }
 
     // reset clear the task id only after unlinking the task
@@ -522,9 +526,14 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     __ompt_get_task_info_internal(1, NULL, &parent_task_data, NULL, NULL, NULL);
 
     if (ompt_enabled.ompt_callback_parallel_end) {
+      ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(this_thr);
+      ompt_frame_t *task_frame = &task_info->frame;
+      OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		     (ompt_frame_runtime | ompt_frame_framepointer));
       ompt_callbacks.ompt_callback(ompt_callback_parallel_end)(
           &(serial_team->t.ompt_team_info.parallel_data), parent_task_data,
           ompt_parallel_invoker_program, OMPT_LOAD_RETURN_ADDRESS(global_tid));
+      OMPT_FRAME_CLEAR(task_frame, exit);
     }
     __ompt_lw_taskteam_unlink(this_thr);
     this_thr->th.ompt_thread_info.state = ompt_state_overhead;

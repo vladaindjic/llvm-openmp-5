@@ -20,10 +20,20 @@
 
 #define _OMP_EXTERN extern "C"
 
-#define OMPT_INVOKER(x)                                                        \
-  ((x == fork_context_gnu) ? ompt_parallel_invoker_program                     \
-                           : ompt_parallel_invoker_runtime)
+#define OMPT_INVOKER(x)							\
+  ((x == fork_context_gnu_task_program)					\
+   ? ompt_parallel_invoker_program					\
+   : ompt_parallel_invoker_runtime)
 
+#define OMPT_FRAME_SET(frame, which, ptr_value, flags)		\
+  {								\
+    frame-> which ## _frame.ptr = ptr_value;			\
+    frame-> which ## _frame_flags = flags;			\
+  }
+
+#define OMPT_FRAME_CLEAR(frame, which)		\
+  OMPT_FRAME_SET(frame, which, 0, 0)	
+ 
 #define ompt_callback(e) e##_callback
 
 typedef struct ompt_callbacks_internal_s {
