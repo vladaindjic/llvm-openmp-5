@@ -27,6 +27,47 @@ extern "C" {
 #include "kmp_ftn_os.h"
 
 
+#if OMPT_SUPPORT && OMPT_OPTIONAL
+
+#define OMPT_LOOP_PRE()							\
+  ompt_frame_t *parent_frame;						\
+  if (ompt_enabled.enabled) {						\
+    parent_frame = &OMPT_CUR_TASK_INFO(thr)->frame;			\
+    OMPT_FRAME_SET(parent_frame, enter, OMPT_GET_FRAME_ADDRESS(0),	\
+		   (ompt_frame_runtime | ompt_frame_framepointer));	\
+    OMPT_STORE_RETURN_ADDRESS(gtid);					\
+  }
+
+#define OMPT_LOOP_BEFORE_TASK()						\
+  if (ompt_enabled.enabled) {						\
+    ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(thr)->frame;		\
+    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),	\
+		   (ompt_frame_runtime | ompt_frame_framepointer));	\
+  }
+
+#define OMPT_LOOP_BEFORE_TASK_START()					\
+  if (ompt_enabled.enabled) {						\
+    GCC_START_SET_FRAMES(application);					\
+  }
+
+#define OMPT_LOOP_POST()						\
+  if (ompt_enabled.enabled) {						\
+    OMPT_FRAME_CLEAR(parent_frame, enter);				\
+  }
+
+#else
+
+#define OMPT_LOOP_PRE()
+
+#define OMPT_LOOP_BEFORE_TASK()
+
+#define OMPT_LOOP_BEFORE_TASK_START()
+
+#define OMPT_LOOP_POST()
+
+#endif
+
+
 #define GCC_START_SET_FRAMES(exit_context)				\
   if (ompt_enabled.enabled) {						\
     /* record a pointer to the frame pointer in the current frame. */	\
@@ -1090,7 +1131,7 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
 //
 // There are no ull versions (yet).
 
-#define PARALLEL_LOOP_START(func, schedule, ompt_pre, ompt_start) \
+#define PARALLEL_LOOP_START(func, schedule) \
   void func(void (*task)(void *), void *data, unsigned num_threads, long lb,   \
             long ub, long str, long chunk_sz) {                                \
     int gtid = __kmp_entry_gtid();                                             \
@@ -1102,7 +1143,7 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
              func) ": T#%d, lb 0x%lx, ub 0x%lx, str 0x%lx, chunk_sz 0x%lx\n",  \
          gtid, lb, ub, str, chunk_sz));                                        \
                                                                                \
-    ompt_pre();                                                                \
+    OMPT_LOOP_PRE();                                                           \
                                                                                \
     if (__kmpc_ok_to_fork(&loc) && (num_threads != 1)) {                       \
       if (num_threads != 0) {                                                  \
@@ -1122,63 +1163,22 @@ LOOP_DOACROSS_RUNTIME_START_ULL(
                       (str > 0) ? (ub - 1) : (ub + 1), str, chunk_sz,          \
                       (schedule) != kmp_sch_static);                           \
                                                                                \
-    ompt_start();                                                              \
+    OMPT_LOOP_BEFORE_TASK_START();					       \
                                                                                \
     KA_TRACE(20, (KMP_STR(func) " exit: T#%d\n", gtid));                       \
   }
-
-#if OMPT_SUPPORT && OMPT_OPTIONAL
-
-#define OMPT_LOOP_PRE()							\
-  ompt_frame_t *parent_frame;						\
-  if (ompt_enabled.enabled) {						\
-    parent_frame = &OMPT_CUR_TASK_INFO(thr)->frame;			\
-    OMPT_FRAME_SET(parent_frame, enter, OMPT_GET_FRAME_ADDRESS(0),	\
-		   (ompt_frame_runtime | ompt_frame_framepointer));	\
-    OMPT_STORE_RETURN_ADDRESS(gtid);					\
-  }
-
-#define OMPT_LOOP_BEFORE_TASK()						\
-  if (ompt_enabled.enabled) {						\
-    ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(thr)->frame;		\
-    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),	\
-		   (ompt_frame_runtime | ompt_frame_framepointer));	\
-  }
-
-#define OMPT_LOOP_BEFORE_TASK_START()					\
-  if (ompt_enabled.enabled) {						\
-    GCC_START_SET_FRAMES(application);					\
-  }
-
-#define OMPT_LOOP_POST()						\
-  if (ompt_enabled.enabled) {						\
-    parent_frame->enter_frame = ompt_data_none;				\
-  }
-
-#else
-
-#define OMPT_LOOP_PRE()
-
-#define OMPT_LOOP_BEFORE_TASK()
-
-#define OMPT_LOOP_BEFORE_TASK_START()
-
-#define OMPT_LOOP_POST()
-
-#endif
-
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_STATIC_START),
-    kmp_sch_static, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START)
+    kmp_sch_static)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_DYNAMIC_START),
-    kmp_sch_dynamic_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START)
+    kmp_sch_dynamic_chunked)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_GUIDED_START),
-    kmp_sch_guided_chunked, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START)
+    kmp_sch_guided_chunked)
 PARALLEL_LOOP_START(
     KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_LOOP_RUNTIME_START),
-    kmp_sch_runtime, OMPT_LOOP_PRE, OMPT_LOOP_BEFORE_TASK_START)
+    kmp_sch_runtime)
 
 // Tasking constructs
 
