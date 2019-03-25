@@ -33,6 +33,9 @@
 
 #define OMPT_FRAME_CLEAR(frame, which)		\
   OMPT_FRAME_SET(frame, which, 0, 0)	
+
+#define OMPT_FRAME_SET_P(frame, which)		\
+  (frame-> which ## _frame.ptr != NULL)
  
 #define ompt_callback(e) e##_callback
 
