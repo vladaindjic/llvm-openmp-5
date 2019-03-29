@@ -1468,7 +1468,6 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
     thread->th.ompt_thread_info.state = (thread->th.th_team_serialized)
                                             ? ompt_state_work_serial
                                             : ompt_state_work_parallel;
-    taskdata->ompt_task_info.frame.exit_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
   }
 #endif
 
@@ -1496,12 +1495,16 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
       ompt_data_t *task_data;
       if (UNLIKELY(ompt_enabled.ompt_callback_cancel)) {
         __ompt_get_task_info_internal(0, NULL, &task_data, NULL, NULL, NULL);
+	ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(thread)->frame;
+	OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		       (ompt_frame_runtime | ompt_frame_framepointer));
         ompt_callbacks.ompt_callback(ompt_callback_cancel)(
             task_data,
             ((taskgroup && taskgroup->cancel_request) ? ompt_cancel_taskgroup
                                                       : ompt_cancel_parallel) |
                 ompt_cancel_discarded_task,
             NULL);
+	OMPT_FRAME_CLEAR(task_frame, exit);
       }
 #endif
       KMP_COUNT_BLOCK(TASK_cancelled);
@@ -1544,8 +1547,13 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
 
 // OMPT task begin
 #if OMPT_SUPPORT
-    if (UNLIKELY(ompt_enabled.enabled))
+    ompt_frame_t *task_frame;
+    if (UNLIKELY(ompt_enabled.enabled)) {
+      task_frame = &OMPT_CUR_TASK_INFO(thread)->frame;
+      OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		     (ompt_frame_runtime | ompt_frame_framepointer));
       __ompt_task_start(task, current_task, gtid);
+    }
 #endif
 
 #if USE_ITT_BUILD && USE_ITT_NOTIFY
@@ -1573,6 +1581,14 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
     }
     KMP_POP_PARTITIONED_TIMER();
 
+
+// OMPT task done
+#if OMPT_SUPPORT
+    if (UNLIKELY(ompt_enabled.enabled)) {
+      OMPT_FRAME_CLEAR(task_frame, exit);
+    }
+#endif
+
 #if USE_ITT_BUILD && USE_ITT_NOTIFY
     if (kmp_itt_count_task) {
       // Barrier imbalance - adjust arrive time with the task duration
@@ -1593,9 +1609,6 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
 #if OMPT_SUPPORT
     if (UNLIKELY(ompt_enabled.enabled)) {
       thread->th.ompt_thread_info = oldInfo;
-      if (taskdata->td_flags.tiedness == TASK_TIED) {
-        taskdata->ompt_task_info.frame.exit_frame = ompt_data_none;
-      }
       __kmp_task_finish<true>(gtid, task, current_task);
     } else
 #endif
