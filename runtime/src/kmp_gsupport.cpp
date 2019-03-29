@@ -544,9 +544,6 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_START)(void (*task)(void *),
 void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
   int gtid = __kmp_get_gtid();
   kmp_info_t *thr = __kmp_threads[gtid];
-#if OMPT_SUPPORT
-  ompt_frame_t *task_frame;
-#endif
 
   MKLOC(loc, "GOMP_parallel_end");
   KA_TRACE(20, ("GOMP_parallel_end: T#%d\n", gtid));
@@ -562,8 +559,8 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
       // implicit task on the stack.
 
       // reset exit_frame of the enclosing task region
-      task_frame = &OMPT_CUR_TASK_INFO(thr)->frame;
-      OMPT_FRAME_CLEAR(task_frame, exit);
+      ompt_frame_t *child_frame = &OMPT_CUR_TASK_INFO(thr)->frame;
+      OMPT_FRAME_CLEAR(child_frame, exit);
     }
 #endif
 
@@ -580,7 +577,8 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
 #if OMPT_SUPPORT
     if (ompt_enabled.enabled) {
       // reset enter_frame of task enclosing region 
-      OMPT_FRAME_CLEAR(task_frame, enter);
+      ompt_frame_t *parent_frame = &OMPT_CUR_TASK_INFO(thr)->frame;
+      OMPT_FRAME_CLEAR(parent_frame, enter);
     }
 #endif
 }

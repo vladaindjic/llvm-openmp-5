@@ -548,8 +548,8 @@ static inline void __ompt_task_init(kmp_taskdata_t *task, int tid) {
   task->ompt_task_info.task_data.value = 0;
   task->ompt_task_info.frame.exit_frame = ompt_data_none;
   task->ompt_task_info.frame.enter_frame = ompt_data_none;
-  task->ompt_task_info.frame.exit_frame_flags = ompt_frame_runtime | ompt_frame_framepointer;
-  task->ompt_task_info.frame.enter_frame_flags = ompt_frame_runtime | ompt_frame_framepointer;
+  task->ompt_task_info.frame.exit_frame_flags = 0; 
+  task->ompt_task_info.frame.enter_frame_flags = 0;
 #if OMP_40_ENABLED
   task->ompt_task_info.ndeps = 0;
   task->ompt_task_info.deps = NULL;
