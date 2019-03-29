@@ -7060,6 +7060,7 @@ int __kmp_invoke_task_func(int gtid) {
   ompt_data_t *my_task_data;
   ompt_data_t *my_parallel_data;
   int ompt_team_size;
+  ompt_frame_t *task_frame;
 
   if (ompt_enabled.enabled) {
     exit_runtime_p = &(
@@ -7072,14 +7073,13 @@ int __kmp_invoke_task_func(int gtid) {
       &(team->t.t_implicit_task_taskdata[tid].ompt_task_info.task_data);
   my_parallel_data = &(team->t.ompt_team_info.parallel_data);
   if (ompt_enabled.ompt_callback_implicit_task) {
-    ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
+    task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
     OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
 		   (ompt_frame_runtime | ompt_frame_framepointer));
     ompt_team_size = team->t.t_nproc;
     ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
         ompt_scope_begin, my_parallel_data, my_task_data, ompt_team_size,
         __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
-    OMPT_FRAME_CLEAR(task_frame, exit);
     OMPT_CUR_TASK_INFO(this_thr)->thread_num = __kmp_tid_from_gtid(gtid);
   }
 #endif
@@ -7096,7 +7096,7 @@ int __kmp_invoke_task_func(int gtid) {
 #endif
                                );
 #if OMPT_SUPPORT
-    *exit_runtime_p = NULL;
+    OMPT_FRAME_CLEAR(task_frame, exit);
 #endif
   }
 
