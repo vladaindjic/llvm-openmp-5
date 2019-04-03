@@ -7065,6 +7065,9 @@ int __kmp_invoke_task_func(int gtid) {
   if (ompt_enabled.enabled) {
     exit_runtime_p = &(
         team->t.t_implicit_task_taskdata[tid].ompt_task_info.frame.exit_frame.ptr);
+    task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
+    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
   } else {
     exit_runtime_p = &dummy;
   }
@@ -7073,9 +7076,6 @@ int __kmp_invoke_task_func(int gtid) {
       &(team->t.t_implicit_task_taskdata[tid].ompt_task_info.task_data);
   my_parallel_data = &(team->t.ompt_team_info.parallel_data);
   if (ompt_enabled.ompt_callback_implicit_task) {
-    task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
-    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
-		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
     ompt_team_size = team->t.t_nproc;
     ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
         ompt_scope_begin, my_parallel_data, my_task_data, ompt_team_size,
@@ -7096,7 +7096,9 @@ int __kmp_invoke_task_func(int gtid) {
 #endif
                                );
 #if OMPT_SUPPORT
-    OMPT_FRAME_CLEAR(task_frame, exit);
+    if (ompt_enabled.enabled) {
+      OMPT_FRAME_CLEAR(task_frame, exit);
+    }
 #endif
   }
 
