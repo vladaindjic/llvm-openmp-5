@@ -305,7 +305,7 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
             parent_team->t.t_implicit_task_taskdata[tid].ompt_task_info.frame);
       }
       OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       OMPT_STORE_RETURN_ADDRESS(gtid);
     }
 #endif
@@ -397,7 +397,7 @@ void __kmpc_fork_teams(ident_t *loc, kmp_int32 argc, kmpc_micro microtask,
     ompt_frame_t *task_frame = 
       &parent_team->t.t_implicit_task_taskdata[tid].ompt_task_info.frame;
     OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		   (ompt_frame_runtime | ompt_frame_framepointer));
+		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
     OMPT_STORE_RETURN_ADDRESS(gtid);
   }
 #endif
@@ -517,7 +517,7 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
       ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(this_thr);
       ompt_frame_t *task_frame = &task_info->frame;
       OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
           ompt_scope_end, NULL, OMPT_CUR_TASK_DATA(this_thr), 1,
           task_info->thread_num, ompt_task_implicit);
@@ -532,7 +532,7 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
       ompt_task_info_t *task_info = OMPT_CUR_TASK_INFO(this_thr);
       ompt_frame_t *task_frame = &task_info->frame;
       OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       ompt_callbacks.ompt_callback(ompt_callback_parallel_end)(
           &(serial_team->t.ompt_team_info.parallel_data), parent_task_data,
           ompt_parallel_invoker_program, OMPT_LOAD_RETURN_ADDRESS(global_tid));
@@ -731,7 +731,7 @@ void __kmpc_barrier(ident_t *loc, kmp_int32 global_tid) {
     set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
     if (set_task_frame) {
       OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       OMPT_STORE_RETURN_ADDRESS(global_tid);
     }
   }
@@ -1636,7 +1636,7 @@ kmp_int32 __kmpc_barrier_master(ident_t *loc, kmp_int32 global_tid) {
     set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
     if (set_task_frame) {
       OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       OMPT_STORE_RETURN_ADDRESS(global_tid);
     }
   }
@@ -1706,7 +1706,7 @@ kmp_int32 __kmpc_barrier_master_nowait(ident_t *loc, kmp_int32 global_tid) {
     set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
     if (set_task_frame) {
       OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       OMPT_STORE_RETURN_ADDRESS(global_tid);
     }
   }
@@ -2113,7 +2113,7 @@ void __kmpc_copyprivate(ident_t *loc, kmp_int32 gtid, size_t cpy_size,
     set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
     if (set_task_frame) {
       OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		     (ompt_frame_runtime | ompt_frame_framepointer));
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       OMPT_STORE_RETURN_ADDRESS(gtid);
     }
   }
@@ -3507,7 +3507,7 @@ __kmpc_reduce_nowait(ident_t *loc, kmp_int32 global_tid, kmp_int32 num_vars,
       set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
       if (set_task_frame) {
 	OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		       (ompt_frame_runtime | ompt_frame_framepointer));
+		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(global_tid);
       }
     }
@@ -3696,7 +3696,7 @@ kmp_int32 __kmpc_reduce(ident_t *loc, kmp_int32 global_tid, kmp_int32 num_vars,
       set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
       if (set_task_frame) {
 	OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		       (ompt_frame_runtime | ompt_frame_framepointer));
+		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(global_tid);
       }
     }
@@ -3788,7 +3788,7 @@ void __kmpc_end_reduce(ident_t *loc, kmp_int32 global_tid,
       set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
       if (set_task_frame) {
 	OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		       (ompt_frame_runtime | ompt_frame_framepointer));
+		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(global_tid);
       }
     }
@@ -3815,7 +3815,7 @@ void __kmpc_end_reduce(ident_t *loc, kmp_int32 global_tid,
       set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
       if (set_task_frame) {
 	OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		       (ompt_frame_runtime | ompt_frame_framepointer));
+		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(global_tid);
       }
     }
@@ -3838,7 +3838,7 @@ void __kmpc_end_reduce(ident_t *loc, kmp_int32 global_tid,
       set_task_frame = OMPT_FRAME_SET_P(task_frame, enter);
       if (set_task_frame) {
 	OMPT_FRAME_SET(task_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
-		       (ompt_frame_runtime | ompt_frame_framepointer));
+		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(global_tid);
       }
     }

@@ -13,6 +13,8 @@
 #ifndef __OMPT_INTERNAL_H__
 #define __OMPT_INTERNAL_H__
 
+#include "kmp_platform.h"
+
 #include "ompt-event-specific.h"
 #include "omp-tools.h"
 
@@ -120,7 +122,17 @@ void ompt_post_init(void);
 void ompt_fini(void);
 
 #define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
+
+
+#if (KMP_ARCH_X86_64 | KMP_ARCH_ARM)
+#define OMPT_GET_FRAME_ADDRESS(level) (*(void **)__builtin_frame_address(level))
+#define OMPT_FRAME_POSITION_DEFAULT ompt_frame_cfa 
+#define OMPT_FRAME_POSITION_GCC4_TASK ompt_frame_cfa 
+#else
 #define OMPT_GET_FRAME_ADDRESS(level) __builtin_frame_address(level)
+#define OMPT_FRAME_POSITION_DEFAULT ompt_frame_framepointer 
+#define OMPT_FRAME_POSITION_GCC4_TASK ompt_frame_stackaddress 
+#endif
 
 int __kmp_control_tool(uint64_t command, uint64_t modifier, void *arg);
 

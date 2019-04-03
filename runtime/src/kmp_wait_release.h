@@ -144,7 +144,7 @@ static void __ompt_implicit_task_end(kmp_info_t *this_thr,
 	if (task) {
           task_frame = &task->ompt_task_info.frame;
           OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
-                         (ompt_frame_runtime | ompt_frame_framepointer));
+                         (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	}
         ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
             ompt_scope_end, NULL, tId, 0, ds_tid, ompt_task_implicit);
