@@ -124,7 +124,7 @@ void ompt_fini(void);
 #define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
 
 
-#if (KMP_ARCH_X86_64 | KMP_ARCH_ARM)
+#if (KMP_ARCH_PPC64 | KMP_ARCH_ARM)
 #define OMPT_GET_FRAME_ADDRESS(level) (*(void **)__builtin_frame_address(level))
 #define OMPT_FRAME_POSITION_DEFAULT ompt_frame_cfa 
 #define OMPT_FRAME_POSITION_GCC4_TASK ompt_frame_cfa 
