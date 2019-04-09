@@ -1756,12 +1756,13 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
 		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       if (ompt_enabled.ompt_callback_task_create) {
         ompt_data_t task_data = ompt_data_none;
+        void *codeptr = OMPT_CUR_TEAM_INFO(__kmp_threads[gtid])->master_return_address;
         ompt_callbacks.ompt_callback(ompt_callback_task_create)(
             parent ? &(parent->ompt_task_info.task_data) : &task_data,
             parent ? &(parent->ompt_task_info.frame) : NULL,
             &(new_taskdata->ompt_task_info.task_data),
             ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata), 0,
-            OMPT_LOAD_RETURN_ADDRESS(gtid));
+            codeptr);
       }
     } else {
       // We are scheduling the continuation of an UNTIED task.
