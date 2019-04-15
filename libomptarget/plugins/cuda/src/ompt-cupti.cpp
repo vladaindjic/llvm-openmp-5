@@ -93,7 +93,7 @@ typedef enum {
   macro(ompt_get_record_type)			\
   macro(ompt_get_record_native)			\
   macro(ompt_get_record_abstract)   \
-  macro(ompt_set_pc_sampling_frequency)
+  macro(ompt_set_pc_sampling)
 
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
@@ -537,15 +537,21 @@ ompt_get_record_abstract
 
 
 static void
-ompt_set_pc_sampling_frequency
+ompt_set_pc_sampling
 (
  ompt_device_t *device,
- int pc_sampling_frequency
+ unsigned int enable,
+ unsigned int frequency
 )
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  cupti_pc_sampling_config(context, (CUpti_ActivityPCSamplingPeriod)pc_sampling_frequency);
+  if (enable) {
+    cupti_pc_sampling_config(context, frequency);
+    cupti_pc_sampling_enable(context);
+  } else {
+    cupti_pc_sampling_disable(context); 
+  }
 }
 
 

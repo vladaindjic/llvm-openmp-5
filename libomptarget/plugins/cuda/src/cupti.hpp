@@ -203,7 +203,21 @@ extern void
 cupti_pc_sampling_config
 (
  CUcontext context,
- CUpti_ActivityPCSamplingPeriod period
+ int frequency
+);
+
+
+extern void
+cupti_pc_sampling_enable
+(
+ CUcontext context
+);
+
+
+void
+cupti_pc_sampling_disable
+(
+ CUcontext context
 );
 
 //===----------------------------------------------------------------------===//

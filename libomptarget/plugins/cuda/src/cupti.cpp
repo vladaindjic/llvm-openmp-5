@@ -171,9 +171,6 @@ CUpti_ActivityKind
 kernel_execution_activities[] = {
   CUPTI_ACTIVITY_KIND_CONTEXT,
   CUPTI_ACTIVITY_KIND_FUNCTION,
-//  CUPTI_ACTIVITY_KIND_GLOBAL_ACCESS,
-//  CUPTI_ACTIVITY_KIND_SHARED_ACCESS,
-  CUPTI_ACTIVITY_KIND_BRANCH,
   CUPTI_ACTIVITY_KIND_INVALID
 };
 
@@ -207,6 +204,7 @@ runtime_activities[] = {
 //******************************************************************************
 //
 static std::map<CUcontext, std::map<CUpti_ActivityKind, bool> > cupti_enabled_activities;
+static std::map<CUcontext, bool> cupti_enabled_pc_sampling;
 static bool cupti_enabled_correlation = false;
 
 static cupti_correlation_callback_t cupti_correlation_callback = 
@@ -636,6 +634,13 @@ cupti_trace_pause
       }
     }
   }
+  bool enabled = cupti_enabled_pc_sampling[context];
+  if (begin_pause == enabled) {
+    bool activity_succ = action(context, CUPTI_ACTIVITY_KIND_PC_SAMPLING) == CUPTI_SUCCESS;
+    if (activity_succ) {
+      cupti_enabled_pc_sampling[context] = !enabled;
+    }
+  }
 }
 
 
@@ -758,17 +763,41 @@ cupti_get_num_dropped_records
   CUPTI_CALL(cuptiActivityGetNumDroppedRecords, (context, streamId, dropped));
 }
 
+//-------------------------------------------------------------
+// pc sampling support
+//-------------------------------------------------------------
 
 void
 cupti_pc_sampling_config
 (
  CUcontext context,
- CUpti_ActivityPCSamplingPeriod period
+ int frequency
 )
 {
   CUpti_ActivityPCSamplingConfig config;
-  config.size = 0;
-  config.samplingPeriod = period;
-  config.samplingPeriod2 = 0;
+  config.size = sizeof(CUpti_ActivityPCSamplingConfig);
+  config.samplingPeriod2 = frequency;
   CUPTI_CALL(cuptiActivityConfigurePCSampling, (context, &config));
+}
+
+
+void
+cupti_pc_sampling_enable
+(
+ CUcontext context
+)
+{
+  cupti_enabled_pc_sampling[context] = true;
+  CUPTI_CALL(cuptiActivityEnableContext, (context, CUPTI_ACTIVITY_KIND_PC_SAMPLING));
+}
+
+
+void
+cupti_pc_sampling_disable
+(
+ CUcontext context
+)
+{
+  cupti_enabled_pc_sampling[context] = false;
+  CUPTI_CALL(cuptiActivityDisableContext, (context, CUPTI_ACTIVITY_KIND_PC_SAMPLING));
 }
