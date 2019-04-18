@@ -2,24 +2,22 @@
  * kmp_stub.cpp -- stub versions of user-callable OpenMP RT functions.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 
+#define __KMP_IMP
+#include "omp.h" // omp_* declarations, must be included before "kmp.h"
 #include "kmp.h" // KMP_DEFAULT_STKSIZE
 #include "kmp_stub.h"
-#include "omp.h" // Function renamings.
 
 #if KMP_OS_WINDOWS
 #include <windows.h>
@@ -36,6 +34,10 @@
 #define omp_set_num_threads ompc_set_num_threads
 #define omp_set_dynamic ompc_set_dynamic
 #define omp_set_nested ompc_set_nested
+#define omp_set_affinity_format ompc_set_affinity_format
+#define omp_get_affinity_format ompc_get_affinity_format
+#define omp_display_affinity ompc_display_affinity
+#define omp_capture_affinity ompc_capture_affinity
 #define kmp_set_stacksize kmpc_set_stacksize
 #define kmp_set_stacksize_s kmpc_set_stacksize_s
 #define kmp_set_blocktime kmpc_set_blocktime
@@ -48,7 +50,9 @@
 #define kmp_realloc kmpc_realloc
 #define kmp_free kmpc_free
 
+#if KMP_OS_WINDOWS
 static double frequency = 0.0;
+#endif
 
 // Helper functions.
 static size_t __kmps_init() {
@@ -72,13 +76,13 @@ static size_t __kmps_init() {
     BOOL status = QueryPerformanceFrequency(&freq);
     if (status) {
       frequency = double(freq.QuadPart);
-    }; // if
+    }
 #endif
 
     initialized = 1;
-  }; // if
+  }
   return dummy;
-}; // __kmps_init
+} // __kmps_init
 
 #define i __kmps_init();
 
@@ -141,34 +145,59 @@ void kmp_set_disp_num_buffers(omp_int_t arg) { i; }
 /* KMP memory management functions. */
 void *kmp_malloc(size_t size) {
   i;
-  return malloc(size);
+  void *res;
+#if KMP_OS_WINDOWS
+  // If succesfull returns a pointer to the memory block, otherwise returns
+  // NULL.
+  // Sets errno to ENOMEM or EINVAL if memory allocation failed or parameter
+  // validation failed.
+  res = _aligned_malloc(size, 1);
+#else
+  res = malloc(size);
+#endif
+  return res;
 }
 void *kmp_aligned_malloc(size_t sz, size_t a) {
   i;
-#if KMP_OS_WINDOWS
-  errno = ENOSYS; // not supported
-  return NULL; // no standard aligned allocator on Windows (pre - C11)
-#else
-  void *res;
   int err;
+  void *res;
+#if KMP_OS_WINDOWS
+  res = _aligned_malloc(sz, a);
+#else
   if (err = posix_memalign(&res, a, sz)) {
     errno = err; // can be EINVAL or ENOMEM
-    return NULL;
+    res = NULL;
   }
-  return res;
 #endif
+  return res;
 }
 void *kmp_calloc(size_t nelem, size_t elsize) {
   i;
-  return calloc(nelem, elsize);
+  void *res;
+#if KMP_OS_WINDOWS
+  res = _aligned_recalloc(NULL, nelem, elsize, 1);
+#else
+  res = calloc(nelem, elsize);
+#endif
+  return res;
 }
 void *kmp_realloc(void *ptr, size_t size) {
   i;
-  return realloc(ptr, size);
+  void *res;
+#if KMP_OS_WINDOWS
+  res = _aligned_realloc(ptr, size, 1);
+#else
+  res = realloc(ptr, size);
+#endif
+  return res;
 }
 void kmp_free(void *ptr) {
   i;
+#if KMP_OS_WINDOWS
+  _aligned_free(ptr);
+#else
   free(ptr);
+#endif
 }
 
 static int __kmps_blocktime = INT_MAX;
@@ -272,8 +301,8 @@ double __kmps_get_wtime(void) {
     BOOL status = QueryPerformanceCounter(&now);
     if (status) {
       wtime = double(now.QuadPart) / frequency;
-    }; // if
-  }; // if
+    }
+  }
 #else
   // gettimeofday() returns seconds and microseconds since the Epoch.
   struct timeval tval;
@@ -283,10 +312,10 @@ double __kmps_get_wtime(void) {
     wtime = (double)(tval.tv_sec) + 1.0E-06 * (double)(tval.tv_usec);
   } else {
     // TODO: Assert or abort here.
-  }; // if
+  }
 #endif
   return wtime;
-}; // __kmps_get_wtime
+} // __kmps_get_wtime
 
 double __kmps_get_wtick(void) {
   // Number of seconds between successive clock ticks.
@@ -304,13 +333,66 @@ double __kmps_get_wtick(void) {
     } else {
       // TODO: Assert or abort here.
       wtick = 1.0E-03;
-    }; // if
+    }
   }
 #else
   // TODO: gettimeofday() returns in microseconds, but what the precision?
   wtick = 1.0E-06;
 #endif
   return wtick;
-}; // __kmps_get_wtick
+} // __kmps_get_wtick
+
+#if OMP_50_ENABLED
+/* OpenMP 5.0 Memory Management */
+#if KMP_OS_WINDOWS
+omp_allocator_handle_t const omp_null_allocator = 0;
+omp_allocator_handle_t const omp_default_mem_alloc =
+    (omp_allocator_handle_t const)1;
+omp_allocator_handle_t const omp_large_cap_mem_alloc =
+    (omp_allocator_handle_t const)2;
+omp_allocator_handle_t const omp_const_mem_alloc =
+    (omp_allocator_handle_t const)3;
+omp_allocator_handle_t const omp_high_bw_mem_alloc =
+    (omp_allocator_handle_t const)4;
+omp_allocator_handle_t const omp_low_lat_mem_alloc =
+    (omp_allocator_handle_t const)5;
+omp_allocator_handle_t const omp_cgroup_mem_alloc =
+    (omp_allocator_handle_t const)6;
+omp_allocator_handle_t const omp_pteam_mem_alloc =
+    (omp_allocator_handle_t const)7;
+omp_allocator_handle_t const omp_thread_mem_alloc =
+    (omp_allocator_handle_t const)8;
+
+omp_memspace_handle_t const omp_default_mem_space =
+    (omp_memspace_handle_t const)0;
+omp_memspace_handle_t const omp_large_cap_mem_space =
+    (omp_memspace_handle_t const)1;
+omp_memspace_handle_t const omp_const_mem_space =
+    (omp_memspace_handle_t const)2;
+omp_memspace_handle_t const omp_high_bw_mem_space =
+    (omp_memspace_handle_t const)3;
+omp_memspace_handle_t const omp_low_lat_mem_space =
+    (omp_memspace_handle_t const)4;
+#endif /* KMP_OS_WINDOWS */
+void *omp_alloc(size_t size, const omp_allocator_handle_t allocator) {
+  i;
+  return malloc(size);
+}
+void omp_free(void *ptr, const omp_allocator_handle_t allocator) {
+  i;
+  free(ptr);
+}
+/* OpenMP 5.0 Affinity Format */
+void omp_set_affinity_format(char const *format) { i; }
+size_t omp_get_affinity_format(char *buffer, size_t size) {
+  i;
+  return 0;
+}
+void omp_display_affinity(char const *format) { i; }
+size_t omp_capture_affinity(char *buffer, size_t buf_size, char const *format) {
+  i;
+  return 0;
+}
+#endif /* OMP_50_ENABLED */
 
 // end of file //

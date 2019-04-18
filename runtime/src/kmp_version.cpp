@@ -2,16 +2,13 @@
  * kmp_version.cpp
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_io.h"
@@ -27,33 +24,35 @@
 // Detect compiler.
 #if KMP_COMPILER_ICC
 #if __INTEL_COMPILER == 1010
-#define KMP_COMPILER "Intel C++ Compiler 10.1"
+#define KMP_COMPILER "Intel(R) C++ Compiler 10.1"
 #elif __INTEL_COMPILER == 1100
-#define KMP_COMPILER "Intel C++ Compiler 11.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 11.0"
 #elif __INTEL_COMPILER == 1110
-#define KMP_COMPILER "Intel C++ Compiler 11.1"
+#define KMP_COMPILER "Intel(R) C++ Compiler 11.1"
 #elif __INTEL_COMPILER == 1200
-#define KMP_COMPILER "Intel C++ Compiler 12.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 12.0"
 #elif __INTEL_COMPILER == 1210
-#define KMP_COMPILER "Intel C++ Compiler 12.1"
+#define KMP_COMPILER "Intel(R) C++ Compiler 12.1"
 #elif __INTEL_COMPILER == 1300
-#define KMP_COMPILER "Intel C++ Compiler 13.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 13.0"
 #elif __INTEL_COMPILER == 1310
-#define KMP_COMPILER "Intel C++ Compiler 13.1"
+#define KMP_COMPILER "Intel(R) C++ Compiler 13.1"
 #elif __INTEL_COMPILER == 1400
-#define KMP_COMPILER "Intel C++ Compiler 14.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 14.0"
 #elif __INTEL_COMPILER == 1410
-#define KMP_COMPILER "Intel C++ Compiler 14.1"
+#define KMP_COMPILER "Intel(R) C++ Compiler 14.1"
 #elif __INTEL_COMPILER == 1500
-#define KMP_COMPILER "Intel C++ Compiler 15.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 15.0"
 #elif __INTEL_COMPILER == 1600
-#define KMP_COMPILER "Intel C++ Compiler 16.0"
+#define KMP_COMPILER "Intel(R) C++ Compiler 16.0"
 #elif __INTEL_COMPILER == 1700
-#define KMP_COMPILER "Intel C++ Compiler 17.0"
-#elif __INTEL_COMPILER == 9998
-#define KMP_COMPILER "Intel C++ Compiler mainline"
-#elif __INTEL_COMPILER == 9999
-#define KMP_COMPILER "Intel C++ Compiler mainline"
+#define KMP_COMPILER "Intel(R) C++ Compiler 17.0"
+#elif __INTEL_COMPILER == 1800
+#define KMP_COMPILER "Intel(R) C++ Compiler 18.0"
+#elif __INTEL_COMPILER == 1900
+#define KMP_COMPILER "Intel(R) C++ Compiler 19.0"
+#elif __INTEL_COMPILER >= 9900
+#define KMP_COMPILER "Intel(R) C++ Compiler mainline"
 #endif
 #elif KMP_COMPILER_CLANG
 #define KMP_COMPILER                                                           \
@@ -76,7 +75,7 @@
 #endif // KMP_LIB_TYPE
 
 // Detect link type (static, dynamic).
-#ifdef KMP_DYNAMIC_LIB
+#if KMP_DYNAMIC_LIB
 #define KMP_LINK_TYPE "dynamic"
 #else
 #define KMP_LINK_TYPE "static"
@@ -130,7 +129,7 @@ static int __kmp_version_1_printed = FALSE;
 void __kmp_print_version_1(void) {
   if (__kmp_version_1_printed) {
     return;
-  }; // if
+  }
   __kmp_version_1_printed = TRUE;
 
 #ifndef KMP_STUB
@@ -167,7 +166,7 @@ void __kmp_print_version_1(void) {
         KMP_VERSION_PREF_STR, __kmp_barrier_type_name[i],
         __kmp_barrier_gather_branch_bits[i],
         __kmp_barrier_release_branch_bits[i]); // __kmp_str_buf_print
-  }; // for i
+  }
   for (int i = bs_plain_barrier; i < bs_last_barrier; ++i) {
     __kmp_str_buf_print(
         &buffer, "%s%s barrier pattern: gather=%s, release=%s\n",
@@ -175,7 +174,7 @@ void __kmp_print_version_1(void) {
         __kmp_barrier_pattern_name[__kmp_barrier_gather_pattern[i]],
         __kmp_barrier_pattern_name
             [__kmp_barrier_release_pattern[i]]); // __kmp_str_buf_print
-  }; // for i
+  }
   __kmp_str_buf_print(&buffer, "%s\n",
                       &__kmp_version_lock[KMP_VERSION_MAGIC_LEN]);
 #endif
@@ -201,7 +200,7 @@ static int __kmp_version_2_printed = FALSE;
 void __kmp_print_version_2(void) {
   if (__kmp_version_2_printed) {
     return;
-  }; // if
+  }
   __kmp_version_2_printed = TRUE;
 } // __kmp_print_version_2
 

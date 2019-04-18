@@ -4,16 +4,13 @@
  *              This is for information about runtime library structures.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 /* THIS FILE SHOULD NOT BE MODIFIED IN IDB INTERFACE LIBRARY CODE
    It should instead be modified in the OpenMP runtime and copied to the
@@ -76,7 +73,9 @@ typedef struct {
   addr_and_size_t threads; // Pointer to __kmp_threads.
   addr_and_size_t roots; // Pointer to __kmp_root.
   addr_and_size_t capacity; // Pointer to __kmp_threads_capacity.
+#if KMP_USE_MONITOR
   addr_and_size_t monitor; // Pointer to __kmp_monitor.
+#endif
 #if !KMP_USE_DYNAMIC_LOCK
   addr_and_size_t lock_table; // Pointer to __kmp_lock_table.
 #endif

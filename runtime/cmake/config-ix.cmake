@@ -1,10 +1,9 @@
 #
 #//===----------------------------------------------------------------------===//
 #//
-#//                     The LLVM Compiler Infrastructure
-#//
-#// This file is dual licensed under the MIT and the University of Illinois Open
-#// Source Licenses. See LICENSE.txt for details.
+#// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+#// See https://llvm.org/LICENSE.txt for license information.
+#// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #//
 #//===----------------------------------------------------------------------===//
 #
@@ -47,11 +46,10 @@ function(libomp_check_architecture_flag flag retval)
 endfunction()
 
 # Checking C, CXX, Linker Flags
-check_cxx_compiler_flag(-std=c++11 LIBOMP_HAVE_STD_CPP11_FLAG)
 check_cxx_compiler_flag(-fno-exceptions LIBOMP_HAVE_FNO_EXCEPTIONS_FLAG)
 check_cxx_compiler_flag(-fno-rtti LIBOMP_HAVE_FNO_RTTI_FLAG)
 check_c_compiler_flag("-x c++" LIBOMP_HAVE_X_CPP_FLAG)
-check_c_compiler_flag(-Werror LIBOMP_HAVE_WERROR_FLAG)
+check_cxx_compiler_flag(-Wcast-qual LIBOMP_HAVE_WCAST_QUAL_FLAG)
 check_c_compiler_flag(-Wunused-function LIBOMP_HAVE_WNO_UNUSED_FUNCTION_FLAG)
 check_c_compiler_flag(-Wunused-local-typedef LIBOMP_HAVE_WNO_UNUSED_LOCAL_TYPEDEF_FLAG)
 check_c_compiler_flag(-Wunused-value LIBOMP_HAVE_WNO_UNUSED_VALUE_FLAG)
@@ -68,18 +66,22 @@ check_c_compiler_flag(-Wcomment LIBOMP_HAVE_WNO_COMMENT_FLAG)
 check_c_compiler_flag(-Wself-assign LIBOMP_HAVE_WNO_SELF_ASSIGN_FLAG)
 check_c_compiler_flag(-Wvla-extension LIBOMP_HAVE_WNO_VLA_EXTENSION_FLAG)
 check_c_compiler_flag(-Wformat-pedantic LIBOMP_HAVE_WNO_FORMAT_PEDANTIC_FLAG)
+check_c_compiler_flag(-Wstringop-overflow=0 LIBOMP_HAVE_WSTRINGOP_OVERFLOW_FLAG)
 check_c_compiler_flag(-msse2 LIBOMP_HAVE_MSSE2_FLAG)
 check_c_compiler_flag(-ftls-model=initial-exec LIBOMP_HAVE_FTLS_MODEL_FLAG)
 libomp_check_architecture_flag(-mmic LIBOMP_HAVE_MMIC_FLAG)
 libomp_check_architecture_flag(-m32 LIBOMP_HAVE_M32_FLAG)
 if(WIN32)
-  # Check Windows MSVC style flags.
-  check_c_compiler_flag(/TP LIBOMP_HAVE_TP_FLAG)
-  check_cxx_compiler_flag(/EHsc LIBOMP_HAVE_EHSC_FLAG)
-  check_cxx_compiler_flag(/GS LIBOMP_HAVE_GS_FLAG)
-  check_cxx_compiler_flag(/Oy- LIBOMP_HAVE_Oy__FLAG)
-  check_cxx_compiler_flag(/arch:SSE2 LIBOMP_HAVE_ARCH_SSE2_FLAG)
-  check_cxx_compiler_flag(/Qsafeseh LIBOMP_HAVE_QSAFESEH_FLAG)
+  if(MSVC)
+    # Check Windows MSVC style flags.
+    check_c_compiler_flag(/TP LIBOMP_HAVE_TP_FLAG)
+    check_cxx_compiler_flag(/EHsc LIBOMP_HAVE_EHSC_FLAG)
+    check_cxx_compiler_flag(/GS LIBOMP_HAVE_GS_FLAG)
+    check_cxx_compiler_flag(/Oy- LIBOMP_HAVE_Oy__FLAG)
+    check_cxx_compiler_flag(/arch:SSE2 LIBOMP_HAVE_ARCH_SSE2_FLAG)
+    check_cxx_compiler_flag(/Qsafeseh LIBOMP_HAVE_QSAFESEH_FLAG)
+  endif()
+  check_c_compiler_flag(-mrtm LIBOMP_HAVE_MRTM_FLAG)
   # It is difficult to create a dummy masm assembly file
   # and then check the MASM assembler to see if these flags exist and work,
   # so we assume they do for Windows.
@@ -223,7 +225,7 @@ endif()
 
 # Check if OMPT support is available
 # Currently, __builtin_frame_address() is required for OMPT
-# Weak attribute is required for Unices, LIBPSAPI is used for Windows
+# Weak attribute is required for Unices (except Darwin), LIBPSAPI is used for Windows
 check_c_source_compiles("int main(int argc, char** argv) {
   void* p = __builtin_frame_address(0);
   return 0;}" LIBOMP_HAVE___BUILTIN_FRAME_ADDRESS)
@@ -238,7 +240,15 @@ endif()
 if(NOT LIBOMP_HAVE___BUILTIN_FRAME_ADDRESS)
   set(LIBOMP_HAVE_OMPT_SUPPORT FALSE)
 else()
-  if(LIBOMP_HAVE_WEAK_ATTRIBUTE OR LIBOMP_HAVE_PSAPI)
+  if( # hardware architecture supported?
+     ((LIBOMP_ARCH STREQUAL x86_64) OR
+      (LIBOMP_ARCH STREQUAL i386) OR
+#      (LIBOMP_ARCH STREQUAL arm) OR
+      (LIBOMP_ARCH STREQUAL aarch64) OR
+      (LIBOMP_ARCH STREQUAL ppc64le) OR
+      (LIBOMP_ARCH STREQUAL ppc64))
+     AND # OS supported?
+     ((WIN32 AND LIBOMP_HAVE_PSAPI) OR APPLE OR (NOT WIN32 AND LIBOMP_HAVE_WEAK_ATTRIBUTE)))
     set(LIBOMP_HAVE_OMPT_SUPPORT TRUE)
   else()
     set(LIBOMP_HAVE_OMPT_SUPPORT FALSE)

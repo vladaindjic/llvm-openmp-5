@@ -1,18 +1,17 @@
+#include "kmp_config.h"
+
 #if USE_DEBUGGER
 /*
  * kmp_debugger.cpp -- debugger support.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_lock.h"
@@ -70,7 +69,9 @@ kmp_omp_struct_info_t __kmp_omp_debug_struct_info = {
     addr_and_size_of(__kmp_threads),
     addr_and_size_of(__kmp_root),
     addr_and_size_of(__kmp_threads_capacity),
+#if KMP_USE_MONITOR
     addr_and_size_of(__kmp_monitor),
+#endif
 #if !KMP_USE_DYNAMIC_LOCK
     addr_and_size_of(__kmp_user_lock_table),
 #endif
@@ -279,10 +280,10 @@ int __kmp_omp_num_threads(ident_t const *ident) {
     for (i = 0; i < info->num; ++i) {
       if (kmp_location_match(&loc, &items[i])) {
         num_threads = items[i].num_threads;
-      }; // if
-    }; // for
+      }
+    }
     __kmp_str_loc_free(&loc);
-  }; // if
+  }
 
   return num_threads;
   ;

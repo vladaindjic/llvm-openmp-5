@@ -2,16 +2,13 @@
  * z_Windows_NT_util.cpp -- platform specific routines.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_affinity.h"
@@ -161,6 +158,10 @@ void __kmp_win32_mutex_lock(kmp_win32_mutex_t *mx) {
   EnterCriticalSection(&mx->cs);
 }
 
+int __kmp_win32_mutex_trylock(kmp_win32_mutex_t *mx) {
+  return TryEnterCriticalSection(&mx->cs);
+}
+
 void __kmp_win32_mutex_unlock(kmp_win32_mutex_t *mx) {
   LeaveCriticalSection(&mx->cs);
 }
@@ -192,8 +193,9 @@ void __kmp_win32_cond_destroy(kmp_win32_cond_t *cv) {
 /* TODO associate cv with a team instead of a thread so as to optimize
    the case where we wake up a whole team */
 
-void __kmp_win32_cond_wait(kmp_win32_cond_t *cv, kmp_win32_mutex_t *mx,
-                           kmp_info_t *th, int need_decrease_load) {
+template <class C>
+static void __kmp_win32_cond_wait(kmp_win32_cond_t *cv, kmp_win32_mutex_t *mx,
+                                  kmp_info_t *th, C *flag) {
   int my_generation;
   int last_waiter;
 
@@ -210,21 +212,46 @@ void __kmp_win32_cond_wait(kmp_win32_cond_t *cv, kmp_win32_mutex_t *mx,
   __kmp_win32_mutex_unlock(mx);
 
   for (;;) {
-    int wait_done;
-
+    int wait_done = 0;
+    DWORD res, timeout = 5000; // just tried to quess an appropriate number
     /* Wait until the event is signaled */
-    WaitForSingleObject(cv->event_, INFINITE);
+    res = WaitForSingleObject(cv->event_, timeout);
 
-    __kmp_win32_mutex_lock(&cv->waiters_count_lock_);
+    if (res == WAIT_OBJECT_0) {
+      // event signaled
+      __kmp_win32_mutex_lock(&cv->waiters_count_lock_);
+      /* Exit the loop when the <cv->event_> is signaled and there are still
+         waiting threads from this <wait_generation> that haven't been released
+         from this wait yet. */
+      wait_done = (cv->release_count_ > 0) &&
+                  (cv->wait_generation_count_ != my_generation);
+      __kmp_win32_mutex_unlock(&cv->waiters_count_lock_);
+    } else if (res == WAIT_TIMEOUT || res == WAIT_FAILED) {
+      // check if the flag and cv counters are in consistent state
+      // as MS sent us debug dump whith inconsistent state of data
+      __kmp_win32_mutex_lock(mx);
+      typename C::flag_t old_f = flag->set_sleeping();
+      if (!flag->done_check_val(old_f & ~KMP_BARRIER_SLEEP_STATE)) {
+        __kmp_win32_mutex_unlock(mx);
+        continue;
+      }
+      // condition fulfilled, exiting
+      old_f = flag->unset_sleeping();
+      KMP_DEBUG_ASSERT(old_f & KMP_BARRIER_SLEEP_STATE);
+      TCW_PTR(th->th.th_sleep_loc, NULL);
+      KF_TRACE(50, ("__kmp_win32_cond_wait: exiting, condition "
+                    "fulfilled: flag's loc(%p): %u => %u\n",
+                    flag->get(), old_f, *(flag->get())));
 
-    /* Exit the loop when the <cv->event_> is signaled and there are still
-       waiting threads from this <wait_generation> that haven't been released
-       from this wait yet. */
-    wait_done = (cv->release_count_ > 0) &&
-                (cv->wait_generation_count_ != my_generation);
+      __kmp_win32_mutex_lock(&cv->waiters_count_lock_);
+      KMP_DEBUG_ASSERT(cv->waiters_count_ > 0);
+      cv->release_count_ = cv->waiters_count_;
+      cv->wait_generation_count_++;
+      wait_done = 1;
+      __kmp_win32_mutex_unlock(&cv->waiters_count_lock_);
 
-    __kmp_win32_mutex_unlock(&cv->waiters_count_lock_);
-
+      __kmp_win32_mutex_unlock(mx);
+    }
     /* there used to be a semicolon after the if statement, it looked like a
        bug, so i removed it */
     if (wait_done)
@@ -282,7 +309,7 @@ void __kmp_disable(int *old_state) {
 void __kmp_suspend_initialize(void) { /* do nothing */
 }
 
-static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
+void __kmp_suspend_initialize_thread(kmp_info_t *th) {
   if (!TCR_4(th->th.th_suspend_init)) {
     /* this means we haven't initialized the suspension pthread objects for this
        thread in this instance of the process */
@@ -300,6 +327,18 @@ void __kmp_suspend_uninitialize_thread(kmp_info_t *th) {
     __kmp_win32_mutex_destroy(&th->th.th_suspend_mx);
     TCW_4(th->th.th_suspend_init, FALSE);
   }
+}
+
+int __kmp_try_suspend_mx(kmp_info_t *th) {
+  return __kmp_win32_mutex_trylock(&th->th.th_suspend_mx);
+}
+
+void __kmp_lock_suspend_mx(kmp_info_t *th) {
+  __kmp_win32_mutex_lock(&th->th.th_suspend_mx);
+}
+
+void __kmp_unlock_suspend_mx(kmp_info_t *th) {
+  __kmp_win32_mutex_unlock(&th->th.th_suspend_mx);
 }
 
 /* This routine puts the calling thread to sleep after setting the
@@ -323,6 +362,14 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
   /* TODO: shouldn't this use release semantics to ensure that
      __kmp_suspend_initialize_thread gets called first? */
   old_spin = flag->set_sleeping();
+#if OMP_50_ENABLED
+  if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME &&
+      __kmp_pause_status != kmp_soft_paused) {
+    flag->unset_sleeping();
+    __kmp_win32_mutex_unlock(&th->th.th_suspend_mx);
+    return;
+  }
+#endif
 
   KF_TRACE(5, ("__kmp_suspend_template: T#%d set sleep bit for flag's"
                " loc(%p)==%d\n",
@@ -352,16 +399,15 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
         th->th.th_active = FALSE;
         if (th->th.th_active_in_pool) {
           th->th.th_active_in_pool = FALSE;
-          KMP_TEST_THEN_DEC32((kmp_int32 *)&__kmp_thread_pool_active_nth);
+          KMP_ATOMIC_DEC(&__kmp_thread_pool_active_nth);
           KMP_DEBUG_ASSERT(TCR_4(__kmp_thread_pool_active_nth) >= 0);
         }
         deactivated = TRUE;
-
-        __kmp_win32_cond_wait(&th->th.th_suspend_cv, &th->th.th_suspend_mx, 0,
-                              0);
+        __kmp_win32_cond_wait(&th->th.th_suspend_cv, &th->th.th_suspend_mx, th,
+                              flag);
       } else {
-        __kmp_win32_cond_wait(&th->th.th_suspend_cv, &th->th.th_suspend_mx, 0,
-                              0);
+        __kmp_win32_cond_wait(&th->th.th_suspend_cv, &th->th.th_suspend_mx, th,
+                              flag);
       }
 
 #ifdef KMP_DEBUG
@@ -377,7 +423,7 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
     if (deactivated) {
       th->th.th_active = TRUE;
       if (TCR_4(th->th.th_in_pool)) {
-        KMP_TEST_THEN_INC32((kmp_int32 *)&__kmp_thread_pool_active_nth);
+        KMP_ATOMIC_INC(&__kmp_thread_pool_active_nth);
         th->th.th_active_in_pool = TRUE;
       }
     }
@@ -462,10 +508,7 @@ void __kmp_resume_oncore(int target_gtid, kmp_flag_oncore *flag) {
   __kmp_resume_template(target_gtid, flag);
 }
 
-void __kmp_yield(int cond) {
-  if (cond)
-    Sleep(0);
-}
+void __kmp_yield() { Sleep(0); }
 
 void __kmp_gtid_set_specific(int gtid) {
   if (__kmp_init_gtid) {
@@ -592,7 +635,7 @@ void __kmp_runtime_initialize(void) {
 
   if (__kmp_init_runtime) {
     return;
-  };
+  }
 
 #if KMP_DYNAMIC_LIB
   /* Pin dynamic library for the lifetime of application */
@@ -618,11 +661,11 @@ void __kmp_runtime_initialize(void) {
 #if (KMP_ARCH_X86 || KMP_ARCH_X86_64)
   if (!__kmp_cpuinfo.initialized) {
     __kmp_query_cpuid(&__kmp_cpuinfo);
-  }; // if
+  }
 #endif /* KMP_ARCH_X86 || KMP_ARCH_X86_64 */
 
 /* Set up minimum number of threads to switch to TLS gtid */
-#if KMP_OS_WINDOWS && !defined KMP_DYNAMIC_LIB
+#if KMP_OS_WINDOWS && !KMP_DYNAMIC_LIB
   // Windows* OS, static library.
   /* New thread may use stack space previously used by another thread,
      currently terminated. On Windows* OS, in case of static linking, we do not
@@ -662,7 +705,7 @@ void __kmp_runtime_initialize(void) {
     __kmp_str_buf_reserve(&path, path_size);
     path_size = GetSystemDirectory(path.str, path.size);
     KMP_DEBUG_ASSERT(path_size > 0);
-  }; // if
+  }
   if (path_size > 0 && path_size < path.size) {
     // Now we have system directory name in the buffer.
     // Append backslash and name of dll to form full path,
@@ -848,9 +891,8 @@ void __kmp_initialize_system_tick(void) {
     status = QueryPerformanceFrequency(&freq);
     if (!status) {
       DWORD error = GetLastError();
-      __kmp_msg(kmp_ms_fatal,
-                KMP_MSG(FunctionError, "QueryPerformanceFrequency()"),
-                KMP_ERR(error), __kmp_msg_null);
+      __kmp_fatal(KMP_MSG(FunctionError, "QueryPerformanceFrequency()"),
+                  KMP_ERR(error), __kmp_msg_null);
 
     } else {
       __kmp_win32_tick = ((double)1.0) / (double)freq.QuadPart;
@@ -890,6 +932,7 @@ kmp_uint64 __kmp_now_nsec() {
   return 1e9 * __kmp_win32_tick * now.QuadPart;
 }
 
+extern "C"
 void *__stdcall __kmp_launch_worker(void *arg) {
   volatile void *stack_data;
   void *exit_val;
@@ -966,8 +1009,7 @@ void *__stdcall __kmp_launch_monitor(void *arg) {
   status = SetThreadPriority(monitor, THREAD_PRIORITY_HIGHEST);
   if (!status) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetThreadPriority), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(CantSetThreadPriority), KMP_ERR(error), __kmp_msg_null);
   }
 
   /* register us as monitor */
@@ -1008,8 +1050,7 @@ void *__stdcall __kmp_launch_monitor(void *arg) {
   status = SetThreadPriority(monitor, THREAD_PRIORITY_NORMAL);
   if (!status) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetThreadPriority), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(CantSetThreadPriority), KMP_ERR(error), __kmp_msg_null);
   }
 
   if (__kmp_global.g.g_abort != 0) {
@@ -1109,8 +1150,7 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
 
     if (handle == 0) {
       DWORD error = GetLastError();
-      __kmp_msg(kmp_ms_fatal, KMP_MSG(CantCreateThread), KMP_ERR(error),
-                __kmp_msg_null);
+      __kmp_fatal(KMP_MSG(CantCreateThread), KMP_ERR(error), __kmp_msg_null);
     } else {
       th->th.th_info.ds.ds_thread = handle;
     }
@@ -1147,9 +1187,8 @@ void __kmp_create_monitor(kmp_info_t *th) {
   __kmp_monitor_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
   if (__kmp_monitor_ev == NULL) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantCreateEvent), KMP_ERR(error),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantCreateEvent), KMP_ERR(error), __kmp_msg_null);
+  }
 #if USE_ITT_BUILD
   __kmp_itt_system_object_created(__kmp_monitor_ev, "Event");
 #endif /* USE_ITT_BUILD */
@@ -1177,8 +1216,7 @@ void __kmp_create_monitor(kmp_info_t *th) {
                    STACK_SIZE_PARAM_IS_A_RESERVATION, &idThread);
   if (handle == 0) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantCreateThread), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(CantCreateThread), KMP_ERR(error), __kmp_msg_null);
   } else
     th->th.th_info.ds.ds_thread = handle;
 
@@ -1200,9 +1238,9 @@ int __kmp_is_thread_alive(kmp_info_t *th, DWORD *exit_val) {
   rc = GetExitCodeThread(th->th.th_info.ds.ds_thread, exit_val);
   if (rc == 0) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(FunctionError, "GetExitCodeThread()"),
-              KMP_ERR(error), __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(FunctionError, "GetExitCodeThread()"), KMP_ERR(error),
+                __kmp_msg_null);
+  }
   return (*exit_val == STILL_ACTIVE);
 }
 
@@ -1229,8 +1267,8 @@ static void __kmp_reap_common(kmp_info_t *th) {
      Right solution seems to be waiting for *either* thread termination *or*
      ds_alive resetting. */
   {
-    // TODO: This code is very similar to KMP_WAIT_YIELD. Need to generalize
-    // KMP_WAIT_YIELD to cover this usage also.
+    // TODO: This code is very similar to KMP_WAIT. Need to generalize
+    // KMP_WAIT to cover this usage also.
     void *obj = NULL;
     kmp_uint32 spins;
 #if USE_ITT_BUILD
@@ -1242,15 +1280,14 @@ static void __kmp_reap_common(kmp_info_t *th) {
       KMP_FSYNC_SPIN_PREPARE(obj);
 #endif /* USE_ITT_BUILD */
       __kmp_is_thread_alive(th, &exit_val);
-      KMP_YIELD(TCR_4(__kmp_nth) > __kmp_avail_proc);
-      KMP_YIELD_SPIN(spins);
+      KMP_YIELD_OVERSUB_ELSE_SPIN(spins);
     } while (exit_val == STILL_ACTIVE && TCR_4(th->th.th_info.ds.ds_alive));
 #if USE_ITT_BUILD
     if (exit_val == STILL_ACTIVE) {
       KMP_FSYNC_CANCEL(obj);
     } else {
       KMP_FSYNC_SPIN_ACQUIRED(obj);
-    }; // if
+    }
 #endif /* USE_ITT_BUILD */
   }
 
@@ -1263,7 +1300,7 @@ static void __kmp_reap_common(kmp_info_t *th) {
     KA_TRACE(1, ("__kmp_reap_common: thread still active.\n"));
   } else if ((void *)exit_val != (void *)th) {
     KA_TRACE(1, ("__kmp_reap_common: ExitProcess / TerminateThread used?\n"));
-  }; // if
+  }
 
   KA_TRACE(10,
            ("__kmp_reap_common: done reaping (%d), handle = %" KMP_UINTPTR_SPEC
@@ -1292,15 +1329,14 @@ void __kmp_reap_monitor(kmp_info_t *th) {
   if (th->th.th_info.ds.ds_gtid != KMP_GTID_MONITOR) {
     KA_TRACE(10, ("__kmp_reap_monitor: monitor did not start, returning\n"));
     return;
-  }; // if
+  }
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
 
   status = SetEvent(__kmp_monitor_ev);
   if (status == FALSE) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetEvent), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(CantSetEvent), KMP_ERR(error), __kmp_msg_null);
   }
   KA_TRACE(10, ("__kmp_reap_monitor: reaping thread (%d)\n",
                 th->th.th_info.ds.ds_gtid));
@@ -1325,7 +1361,7 @@ static void __kmp_team_handler(int signo) {
     // Stage 1 signal handler, let's shut down all of the threads.
     if (__kmp_debug_buf) {
       __kmp_dump_debug_buffer();
-    }; // if
+    }
     KMP_MB(); // Flush all pending memory write invalidates.
     TCW_4(__kmp_global.g.g_abort, signo);
     KMP_MB(); // Flush all pending memory write invalidates.
@@ -1338,9 +1374,9 @@ static sig_func_t __kmp_signal(int signum, sig_func_t handler) {
   sig_func_t old = signal(signum, handler);
   if (old == SIG_ERR) {
     int error = errno;
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(FunctionError, "signal"), KMP_ERR(error),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(FunctionError, "signal"), KMP_ERR(error),
+                __kmp_msg_null);
+  }
   return old;
 }
 
@@ -1356,7 +1392,7 @@ static void __kmp_install_one_handler(int sig, sig_func_t handler,
       __kmp_siginstalled[sig] = 1;
     } else { // Restore/keep user's handler if one previously installed.
       old = __kmp_signal(sig, old);
-    }; // if
+    }
   } else {
     // Save initial/system signal handlers to see if user handlers installed.
     // 2009-09-23: It is a dead code. On Windows* OS __kmp_install_signals
@@ -1364,7 +1400,7 @@ static void __kmp_install_one_handler(int sig, sig_func_t handler,
     old = __kmp_signal(sig, SIG_DFL);
     __kmp_sighldrs[sig] = old;
     __kmp_signal(sig, old);
-  }; // if
+  }
   KMP_MB(); /* Flush all pending memory write invalidates.  */
 } // __kmp_install_one_handler
 
@@ -1379,11 +1415,11 @@ static void __kmp_remove_one_handler(int sig) {
                     "restoring: sig=%d\n",
                     sig));
       old = __kmp_signal(sig, old);
-    }; // if
+    }
     __kmp_sighldrs[sig] = NULL;
     __kmp_siginstalled[sig] = 0;
     KMP_MB(); // Flush all pending memory write invalidates.
-  }; // if
+  }
 } // __kmp_remove_one_handler
 
 void __kmp_install_signals(int parallel_init) {
@@ -1392,7 +1428,7 @@ void __kmp_install_signals(int parallel_init) {
     KB_TRACE(10, ("__kmp_install_signals: KMP_HANDLE_SIGNALS is false - "
                   "handlers not installed\n"));
     return;
-  }; // if
+  }
   __kmp_install_one_handler(SIGINT, __kmp_team_handler, parallel_init);
   __kmp_install_one_handler(SIGILL, __kmp_team_handler, parallel_init);
   __kmp_install_one_handler(SIGABRT, __kmp_team_handler, parallel_init);
@@ -1406,7 +1442,7 @@ void __kmp_remove_signals(void) {
   KB_TRACE(10, ("__kmp_remove_signals: called\n"));
   for (sig = 1; sig < NSIG; ++sig) {
     __kmp_remove_one_handler(sig);
-  }; // for sig
+  }
 } // __kmp_remove_signals
 
 #endif // KMP_HANDLE_SIGNALS
@@ -1418,8 +1454,8 @@ void __kmp_thread_sleep(int millis) {
   status = SleepEx((DWORD)millis, FALSE);
   if (status) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(FunctionError, "SleepEx()"), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(FunctionError, "SleepEx()"), KMP_ERR(error),
+                __kmp_msg_null);
   }
 }
 
@@ -1453,8 +1489,7 @@ void __kmp_free_handle(kmp_thread_t tHandle) {
   rc = CloseHandle(tHandle);
   if (!rc) {
     DWORD error = GetLastError();
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantCloseHandle), KMP_ERR(error),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(CantCloseHandle), KMP_ERR(error), __kmp_msg_null);
   }
 }
 
@@ -1488,11 +1523,11 @@ int __kmp_get_load_balance(int max) {
   if (NtQuerySystemInformation == NULL) {
     running_threads = -1;
     goto finish;
-  }; // if
+  }
 
   if (max <= 0) {
     max = INT_MAX;
-  }; // if
+  }
 
   do {
 
@@ -1506,7 +1541,7 @@ int __kmp_get_load_balance(int max) {
     if (buffer == NULL) {
       running_threads = -1;
       goto finish;
-    }; // if
+    }
     status = NtQuerySystemInformation(SystemProcessInformation, buffer,
                                       buff_size, &info_size);
     first_time = 0;
@@ -1539,7 +1574,7 @@ int __kmp_get_load_balance(int max) {
     if (spi->NextEntryOffset != 0) {
       CHECK(spi_size <=
             spi->NextEntryOffset); // And do not overlap with the next record.
-    }; // if
+    }
     // pid == 0 corresponds to the System Idle Process. It always has running
     // threads on all cores. So, we don't consider the running threads of this
     // process.
@@ -1555,14 +1590,14 @@ int __kmp_get_load_balance(int max) {
           if (running_threads >= max) {
             goto finish;
           }
-        } // if
-      }; // for i
-    } // if
+        }
+      }
+    }
     if (spi->NextEntryOffset == 0) {
       break;
-    }; // if
+    }
     spi = PSYSTEM_PROCESS_INFORMATION(uintptr_t(spi) + spi->NextEntryOffset);
-  }; // forever
+  }
 
 #undef CHECK
 
@@ -1570,7 +1605,7 @@ finish: // Clean up and exit.
 
   if (buffer != NULL) {
     KMP_INTERNAL_FREE(buffer);
-  }; // if
+  }
 
   glb_running_threads = running_threads;
 

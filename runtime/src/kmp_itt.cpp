@@ -5,16 +5,13 @@
  * kmp_itt.cpp -- ITT Notify interface.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp_itt.h"
 
@@ -24,6 +21,9 @@
 
 #if USE_ITT_NOTIFY
 
+#include "ittnotify_config.h"
+__itt_global __kmp_ittapi_clean_global;
+extern __itt_global __kmp_itt__ittapi_global;
 kmp_int32 __kmp_barrier_domain_count;
 kmp_int32 __kmp_region_domain_count;
 __itt_domain *__kmp_itt_barrier_domains[KMP_MAX_FRAME_DOMAINS];
@@ -55,6 +55,12 @@ kmp_bootstrap_lock_t __kmp_itt_debug_lock =
 
 #endif // USE_ITT_NOTIFY
 
+void __kmp_itt_reset() {
+#if USE_ITT_NOTIFY
+  __kmp_itt__ittapi_global = __kmp_ittapi_clean_global;
+#endif
+}
+
 void __kmp_itt_initialize() {
 
 // ITTNotify library is loaded and initialized at first call to any ittnotify
@@ -62,6 +68,9 @@ void __kmp_itt_initialize() {
 // RTL version to ITTNotify.
 
 #if USE_ITT_NOTIFY
+  // Backup a clean global state
+  __kmp_ittapi_clean_global = __kmp_itt__ittapi_global;
+
   // Report OpenMP RTL version.
   kmp_str_buf_t buf;
   __itt_mark_type version;
@@ -70,7 +79,7 @@ void __kmp_itt_initialize() {
                       __kmp_version_minor, __kmp_version_build);
   if (__itt_api_version_ptr != NULL) {
     __kmp_str_buf_print(&buf, ":%s", __itt_api_version());
-  }; // if
+  }
   version = __itt_mark_create(buf.str);
   __itt_mark(version, NULL);
   __kmp_str_buf_free(&buf);
@@ -144,8 +153,8 @@ extern "C" void __itt_error_handler(__itt_error_code err, va_list args) {
       __kmp_str_free(&err_code.str);
     }
   } break;
-  default: { KMP_WARNING(IttUnknownError, err); };
-  }; // switch
+  default: { KMP_WARNING(IttUnknownError, err); }
+  }
 } // __itt_error_handler
 
 #endif /* USE_ITT_BUILD */

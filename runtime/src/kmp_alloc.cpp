@@ -2,16 +2,13 @@
  * kmp_alloc.cpp -- private/shared dynamic memory allocation and management
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_io.h"
@@ -54,16 +51,6 @@ static void brel(kmp_info_t *th, void *buf);
 static void bectl(kmp_info_t *th, bget_compact_t compact,
                   bget_acquire_t acquire, bget_release_t release,
                   bufsize pool_incr);
-
-#ifdef KMP_DEBUG
-static void bstats(kmp_info_t *th, bufsize *curalloc, bufsize *totfree,
-                   bufsize *maxfree, long *nget, long *nrel);
-static void bstatse(kmp_info_t *th, bufsize *pool_incr, long *npool,
-                    long *npget, long *nprel, long *ndget, long *ndrel);
-static void bufdump(kmp_info_t *th, void *buf);
-static void bpoold(kmp_info_t *th, void *pool, int dumpalloc, int dumpfree);
-static int bpoolv(kmp_info_t *th, void *pool);
-#endif
 
 /* BGET CONFIGURATION */
 /* Buffer allocation size quantum: all buffers allocated are a
@@ -273,23 +260,6 @@ static thr_data_t *get_thr_data(kmp_info_t *th) {
   return data;
 }
 
-#ifdef KMP_DEBUG
-
-static void __kmp_bget_validate_queue(kmp_info_t *th) {
-  /* NOTE: assume that the global_lock is held */
-
-  void *p = (void *)th->th.th_local.bget_list;
-
-  while (p != 0) {
-    bfhead_t *b = BFH(((char *)p) - sizeof(bhead_t));
-
-    KMP_DEBUG_ASSERT(b->bh.bb.bsize != 0);
-    p = (void *)b->ql.flink;
-  }
-}
-
-#endif
-
 /* Walk the free list and release the enqueued buffers */
 static void __kmp_bget_dequeue(kmp_info_t *th) {
   void *p = TCR_SYNC_PTR(th->th.th_local.bget_list);
@@ -464,7 +434,7 @@ static void *bget(kmp_info_t *th, bufsize requested_size) {
 
   if (size < 0 || size + sizeof(bhead_t) > MaxSize) {
     return NULL;
-  }; // if
+  }
 
   __kmp_bget_dequeue(th); /* Release any queued buffers */
 
@@ -716,7 +686,7 @@ static void *bgetr(kmp_info_t *th, void *buf, bufsize size) {
     osize = bd->tsize - (bufsize)sizeof(bdhead_t);
   } else {
     osize -= sizeof(bhead_t);
-  };
+  }
 
   KMP_DEBUG_ASSERT(osize > 0);
 
@@ -1019,197 +989,6 @@ static void bfreed(kmp_info_t *th) {
     __kmp_printf_no_lock("__kmp_printpool: T#%d No free blocks\n", gtid);
 }
 
-#ifdef KMP_DEBUG
-
-#if BufStats
-
-/*  BSTATS  --  Return buffer allocation free space statistics.  */
-static void bstats(kmp_info_t *th, bufsize *curalloc, bufsize *totfree,
-                   bufsize *maxfree, long *nget, long *nrel) {
-  int bin = 0;
-  thr_data_t *thr = get_thr_data(th);
-
-  *nget = thr->numget;
-  *nrel = thr->numrel;
-  *curalloc = (bufsize)thr->totalloc;
-  *totfree = 0;
-  *maxfree = -1;
-
-  for (bin = 0; bin < MAX_BGET_BINS; ++bin) {
-    bfhead_t *b = thr->freelist[bin].ql.flink;
-
-    while (b != &thr->freelist[bin]) {
-      KMP_DEBUG_ASSERT(b->bh.bb.bsize > 0);
-      *totfree += b->bh.bb.bsize;
-      if (b->bh.bb.bsize > *maxfree) {
-        *maxfree = b->bh.bb.bsize;
-      }
-      b = b->ql.flink; /* Link to next buffer */
-    }
-  }
-}
-
-/*  BSTATSE  --  Return extended statistics  */
-static void bstatse(kmp_info_t *th, bufsize *pool_incr, long *npool,
-                    long *npget, long *nprel, long *ndget, long *ndrel) {
-  thr_data_t *thr = get_thr_data(th);
-
-  *pool_incr = (thr->pool_len < 0) ? -thr->exp_incr : thr->exp_incr;
-  *npool = thr->numpblk;
-  *npget = thr->numpget;
-  *nprel = thr->numprel;
-  *ndget = thr->numdget;
-  *ndrel = thr->numdrel;
-}
-
-#endif /* BufStats */
-
-/*  BUFDUMP  --  Dump the data in a buffer.  This is called with the  user
-                 data pointer, and backs up to the buffer header.  It will
-                 dump either a free block or an allocated one.  */
-static void bufdump(kmp_info_t *th, void *buf) {
-  bfhead_t *b;
-  unsigned char *bdump;
-  bufsize bdlen;
-
-  b = BFH(((char *)buf) - sizeof(bhead_t));
-  KMP_DEBUG_ASSERT(b->bh.bb.bsize != 0);
-  if (b->bh.bb.bsize < 0) {
-    bdump = (unsigned char *)buf;
-    bdlen = (-b->bh.bb.bsize) - (bufsize)sizeof(bhead_t);
-  } else {
-    bdump = (unsigned char *)(((char *)b) + sizeof(bfhead_t));
-    bdlen = b->bh.bb.bsize - (bufsize)sizeof(bfhead_t);
-  }
-
-  while (bdlen > 0) {
-    int i, dupes = 0;
-    bufsize l = bdlen;
-    char bhex[50], bascii[20];
-
-    if (l > 16) {
-      l = 16;
-    }
-
-    for (i = 0; i < l; i++) {
-      (void)KMP_SNPRINTF(bhex + i * 3, sizeof(bhex) - i * 3, "%02X ", bdump[i]);
-      if (bdump[i] > 0x20 && bdump[i] < 0x7F)
-        bascii[i] = bdump[i];
-      else
-        bascii[i] = ' ';
-    }
-    bascii[i] = 0;
-    (void)__kmp_printf_no_lock("%-48s   %s\n", bhex, bascii);
-    bdump += l;
-    bdlen -= l;
-    while ((bdlen > 16) &&
-           (memcmp((char *)(bdump - 16), (char *)bdump, 16) == 0)) {
-      dupes++;
-      bdump += 16;
-      bdlen -= 16;
-    }
-    if (dupes > 1) {
-      (void)__kmp_printf_no_lock(
-          "     (%d lines [%d bytes] identical to above line skipped)\n", dupes,
-          dupes * 16);
-    } else if (dupes == 1) {
-      bdump -= 16;
-      bdlen += 16;
-    }
-  }
-}
-
-/*  BPOOLD  --  Dump a buffer pool.  The buffer headers are always listed.
-                If DUMPALLOC is nonzero, the contents of allocated buffers
-                are  dumped.   If  DUMPFREE  is  nonzero,  free blocks are
-                dumped as well.  If FreeWipe  checking  is  enabled,  free
-                blocks  which  have  been clobbered will always be dumped. */
-static void bpoold(kmp_info_t *th, void *buf, int dumpalloc, int dumpfree) {
-  bfhead_t *b = BFH((char *)buf - sizeof(bhead_t));
-
-  while (b->bh.bb.bsize != ESent) {
-    bufsize bs = b->bh.bb.bsize;
-
-    if (bs < 0) {
-      bs = -bs;
-      (void)__kmp_printf_no_lock("Allocated buffer: size %6ld bytes.\n",
-                                 (long)bs);
-      if (dumpalloc) {
-        bufdump(th, (void *)(((char *)b) + sizeof(bhead_t)));
-      }
-    } else {
-      const char *lerr = "";
-
-      KMP_DEBUG_ASSERT(bs > 0);
-      if ((b->ql.blink->ql.flink != b) || (b->ql.flink->ql.blink != b)) {
-        lerr = "  (Bad free list links)";
-      }
-      (void)__kmp_printf_no_lock("Free block:       size %6ld bytes.%s\n",
-                                 (long)bs, lerr);
-#ifdef FreeWipe
-      lerr = ((char *)b) + sizeof(bfhead_t);
-      if ((bs > sizeof(bfhead_t)) &&
-          ((*lerr != 0x55) ||
-           (memcmp(lerr, lerr + 1, (size_t)(bs - (sizeof(bfhead_t) + 1))) !=
-            0))) {
-        (void)__kmp_printf_no_lock(
-            "(Contents of above free block have been overstored.)\n");
-        bufdump(th, (void *)(((char *)b) + sizeof(bhead_t)));
-      } else
-#endif
-          if (dumpfree) {
-        bufdump(th, (void *)(((char *)b) + sizeof(bhead_t)));
-      }
-    }
-    b = BFH(((char *)b) + bs);
-  }
-}
-
-/*  BPOOLV  --  Validate a buffer pool. */
-static int bpoolv(kmp_info_t *th, void *buf) {
-  bfhead_t *b = BFH(buf);
-
-  while (b->bh.bb.bsize != ESent) {
-    bufsize bs = b->bh.bb.bsize;
-
-    if (bs < 0) {
-      bs = -bs;
-    } else {
-#ifdef FreeWipe
-      char *lerr = "";
-#endif
-
-      KMP_DEBUG_ASSERT(bs > 0);
-      if (bs <= 0) {
-        return 0;
-      }
-      if ((b->ql.blink->ql.flink != b) || (b->ql.flink->ql.blink != b)) {
-        (void)__kmp_printf_no_lock(
-            "Free block: size %6ld bytes.  (Bad free list links)\n", (long)bs);
-        KMP_DEBUG_ASSERT(0);
-        return 0;
-      }
-#ifdef FreeWipe
-      lerr = ((char *)b) + sizeof(bfhead_t);
-      if ((bs > sizeof(bfhead_t)) &&
-          ((*lerr != 0x55) ||
-           (memcmp(lerr, lerr + 1, (size_t)(bs - (sizeof(bfhead_t) + 1))) !=
-            0))) {
-        (void)__kmp_printf_no_lock(
-            "(Contents of above free block have been overstored.)\n");
-        bufdump(th, (void *)(((char *)b) + sizeof(bhead_t)));
-        KMP_DEBUG_ASSERT(0);
-        return 0;
-      }
-#endif /* FreeWipe */
-    }
-    b = BFH(((char *)b) + bs);
-  }
-  return 1;
-}
-
-#endif /* KMP_DEBUG */
-
 void __kmp_initialize_bget(kmp_info_t *th) {
   KMP_DEBUG_ASSERT(SizeQuant >= sizeof(void *) && (th != 0));
 
@@ -1258,7 +1037,7 @@ void __kmp_finalize_bget(kmp_info_t *th) {
   if (th->th.th_local.bget_data != NULL) {
     __kmp_free(th->th.th_local.bget_data);
     th->th.th_local.bget_data = NULL;
-  }; // if
+  }
 }
 
 void kmpc_set_poolsize(size_t size) {
@@ -1385,7 +1164,7 @@ void *kmpc_realloc(void *ptr, size_t size) {
       *(void **)result = result;
       result = (void **)result + 1;
     }
-  }; // if
+  }
   return result;
 }
 
@@ -1393,14 +1172,14 @@ void *kmpc_realloc(void *ptr, size_t size) {
 void kmpc_free(void *ptr) {
   if (!__kmp_init_serial) {
     return;
-  }; // if
+  }
   if (ptr != NULL) {
     kmp_info_t *th = __kmp_get_thread();
     __kmp_bget_dequeue(th); /* Release any queued buffers */
     // extract allocated pointer and free it
     KMP_ASSERT(*((void **)ptr - 1));
     brel(th, *((void **)ptr - 1));
-  };
+  }
 }
 
 void *___kmp_thread_malloc(kmp_info_t *th, size_t size KMP_SRC_LOC_DECL) {
@@ -1440,6 +1219,418 @@ void ___kmp_thread_free(kmp_info_t *th, void *ptr KMP_SRC_LOC_DECL) {
   }
   KE_TRACE(30, ("<- __kmp_thread_free()\n"));
 }
+
+#if OMP_50_ENABLED
+/* OMP 5.0 Memory Management support */
+static const char *kmp_mk_lib_name;
+static void *h_memkind;
+/* memkind experimental API: */
+// memkind_alloc
+static void *(*kmp_mk_alloc)(void *k, size_t sz);
+// memkind_free
+static void (*kmp_mk_free)(void *kind, void *ptr);
+// memkind_check_available
+static int (*kmp_mk_check)(void *kind);
+// kinds we are going to use
+static void **mk_default;
+static void **mk_interleave;
+static void **mk_hbw;
+static void **mk_hbw_interleave;
+static void **mk_hbw_preferred;
+static void **mk_hugetlb;
+static void **mk_hbw_hugetlb;
+static void **mk_hbw_preferred_hugetlb;
+
+#if KMP_OS_UNIX && KMP_DYNAMIC_LIB
+static inline void chk_kind(void ***pkind) {
+  KMP_DEBUG_ASSERT(pkind);
+  if (*pkind) // symbol found
+    if (kmp_mk_check(**pkind)) // kind not available or error
+      *pkind = NULL;
+}
+#endif
+
+void __kmp_init_memkind() {
+// as of 2018-07-31 memkind does not support Windows*, exclude it for now
+#if KMP_OS_UNIX && KMP_DYNAMIC_LIB
+  // use of statically linked memkind is problematic, as it depends on libnuma
+  kmp_mk_lib_name = "libmemkind.so";
+  h_memkind = dlopen(kmp_mk_lib_name, RTLD_LAZY);
+  if (h_memkind) {
+    kmp_mk_check = (int (*)(void *))dlsym(h_memkind, "memkind_check_available");
+    kmp_mk_alloc =
+        (void *(*)(void *, size_t))dlsym(h_memkind, "memkind_malloc");
+    kmp_mk_free = (void (*)(void *, void *))dlsym(h_memkind, "memkind_free");
+    mk_default = (void **)dlsym(h_memkind, "MEMKIND_DEFAULT");
+    if (kmp_mk_check && kmp_mk_alloc && kmp_mk_free && mk_default &&
+        !kmp_mk_check(*mk_default)) {
+      __kmp_memkind_available = 1;
+      mk_interleave = (void **)dlsym(h_memkind, "MEMKIND_INTERLEAVE");
+      chk_kind(&mk_interleave);
+      mk_hbw = (void **)dlsym(h_memkind, "MEMKIND_HBW");
+      chk_kind(&mk_hbw);
+      mk_hbw_interleave = (void **)dlsym(h_memkind, "MEMKIND_HBW_INTERLEAVE");
+      chk_kind(&mk_hbw_interleave);
+      mk_hbw_preferred = (void **)dlsym(h_memkind, "MEMKIND_HBW_PREFERRED");
+      chk_kind(&mk_hbw_preferred);
+      mk_hugetlb = (void **)dlsym(h_memkind, "MEMKIND_HUGETLB");
+      chk_kind(&mk_hugetlb);
+      mk_hbw_hugetlb = (void **)dlsym(h_memkind, "MEMKIND_HBW_HUGETLB");
+      chk_kind(&mk_hbw_hugetlb);
+      mk_hbw_preferred_hugetlb =
+          (void **)dlsym(h_memkind, "MEMKIND_HBW_PREFERRED_HUGETLB");
+      chk_kind(&mk_hbw_preferred_hugetlb);
+      KE_TRACE(25, ("__kmp_init_memkind: memkind library initialized\n"));
+      return; // success
+    }
+    dlclose(h_memkind); // failure
+    h_memkind = NULL;
+  }
+  kmp_mk_check = NULL;
+  kmp_mk_alloc = NULL;
+  kmp_mk_free = NULL;
+  mk_default = NULL;
+  mk_interleave = NULL;
+  mk_hbw = NULL;
+  mk_hbw_interleave = NULL;
+  mk_hbw_preferred = NULL;
+  mk_hugetlb = NULL;
+  mk_hbw_hugetlb = NULL;
+  mk_hbw_preferred_hugetlb = NULL;
+#else
+  kmp_mk_lib_name = "";
+  h_memkind = NULL;
+  kmp_mk_check = NULL;
+  kmp_mk_alloc = NULL;
+  kmp_mk_free = NULL;
+  mk_default = NULL;
+  mk_interleave = NULL;
+  mk_hbw = NULL;
+  mk_hbw_interleave = NULL;
+  mk_hbw_preferred = NULL;
+  mk_hugetlb = NULL;
+  mk_hbw_hugetlb = NULL;
+  mk_hbw_preferred_hugetlb = NULL;
+#endif
+}
+
+void __kmp_fini_memkind() {
+#if KMP_OS_UNIX && KMP_DYNAMIC_LIB
+  if (__kmp_memkind_available)
+    KE_TRACE(25, ("__kmp_fini_memkind: finalize memkind library\n"));
+  if (h_memkind) {
+    dlclose(h_memkind);
+    h_memkind = NULL;
+  }
+  kmp_mk_check = NULL;
+  kmp_mk_alloc = NULL;
+  kmp_mk_free = NULL;
+  mk_default = NULL;
+  mk_interleave = NULL;
+  mk_hbw = NULL;
+  mk_hbw_interleave = NULL;
+  mk_hbw_preferred = NULL;
+  mk_hugetlb = NULL;
+  mk_hbw_hugetlb = NULL;
+  mk_hbw_preferred_hugetlb = NULL;
+#endif
+}
+
+omp_allocator_handle_t __kmpc_init_allocator(int gtid, omp_memspace_handle_t ms,
+                                             int ntraits,
+                                             omp_alloctrait_t traits[]) {
+  // OpenMP 5.0 only allows predefined memspaces
+  KMP_DEBUG_ASSERT(ms == omp_default_mem_space || ms == omp_low_lat_mem_space ||
+                   ms == omp_large_cap_mem_space || ms == omp_const_mem_space ||
+                   ms == omp_high_bw_mem_space);
+  kmp_allocator_t *al;
+  int i;
+  al = (kmp_allocator_t *)__kmp_allocate(sizeof(kmp_allocator_t)); // zeroed
+  al->memspace = ms; // not used currently
+  for (i = 0; i < ntraits; ++i) {
+    switch (traits[i].key) {
+    case OMP_ATK_THREADMODEL:
+    case OMP_ATK_ACCESS:
+    case OMP_ATK_PINNED:
+      break;
+    case OMP_ATK_ALIGNMENT:
+      al->alignment = traits[i].value;
+      KMP_ASSERT(IS_POWER_OF_TWO(al->alignment));
+      break;
+    case OMP_ATK_POOL_SIZE:
+      al->pool_size = traits[i].value;
+      break;
+    case OMP_ATK_FALLBACK:
+      al->fb = (omp_alloctrait_value_t)traits[i].value;
+      KMP_DEBUG_ASSERT(
+          al->fb == OMP_ATV_DEFAULT_MEM_FB || al->fb == OMP_ATV_NULL_FB ||
+          al->fb == OMP_ATV_ABORT_FB || al->fb == OMP_ATV_ALLOCATOR_FB);
+      break;
+    case OMP_ATK_FB_DATA:
+      al->fb_data = RCAST(kmp_allocator_t *, traits[i].value);
+      break;
+    case OMP_ATK_PARTITION:
+      al->memkind = RCAST(void **, traits[i].value);
+      break;
+    default:
+      KMP_ASSERT2(0, "Unexpected allocator trait");
+    }
+  }
+  if (al->fb == 0) {
+    // set default allocator
+    al->fb = OMP_ATV_DEFAULT_MEM_FB;
+    al->fb_data = (kmp_allocator_t *)omp_default_mem_alloc;
+  } else if (al->fb == OMP_ATV_ALLOCATOR_FB) {
+    KMP_ASSERT(al->fb_data != NULL);
+  } else if (al->fb == OMP_ATV_DEFAULT_MEM_FB) {
+    al->fb_data = (kmp_allocator_t *)omp_default_mem_alloc;
+  }
+  if (__kmp_memkind_available) {
+    // Let's use memkind library if available
+    if (ms == omp_high_bw_mem_space) {
+      if (al->memkind == (void *)OMP_ATV_INTERLEAVED && mk_hbw_interleave) {
+        al->memkind = mk_hbw_interleave;
+      } else if (mk_hbw_preferred) {
+        // AC: do not try to use MEMKIND_HBW for now, because memkind library
+        // cannot reliably detect exhaustion of HBW memory.
+        // It could be possible using hbw_verify_memory_region() but memkind
+        // manual says: "Using this function in production code may result in
+        // serious performance penalty".
+        al->memkind = mk_hbw_preferred;
+      } else {
+        // HBW is requested but not available --> return NULL allocator
+        __kmp_free(al);
+        return omp_null_allocator;
+      }
+    } else {
+      if (al->memkind == (void *)OMP_ATV_INTERLEAVED && mk_interleave) {
+        al->memkind = mk_interleave;
+      } else {
+        al->memkind = mk_default;
+      }
+    }
+  } else {
+    if (ms == omp_high_bw_mem_space) {
+      // cannot detect HBW memory presence without memkind library
+      __kmp_free(al);
+      return omp_null_allocator;
+    }
+  }
+  return (omp_allocator_handle_t)al;
+}
+
+void __kmpc_destroy_allocator(int gtid, omp_allocator_handle_t allocator) {
+  if (allocator > kmp_max_mem_alloc)
+    __kmp_free(allocator);
+}
+
+void __kmpc_set_default_allocator(int gtid, omp_allocator_handle_t allocator) {
+  if (allocator == omp_null_allocator)
+    allocator = omp_default_mem_alloc;
+  __kmp_threads[gtid]->th.th_def_allocator = allocator;
+}
+
+omp_allocator_handle_t __kmpc_get_default_allocator(int gtid) {
+  return __kmp_threads[gtid]->th.th_def_allocator;
+}
+
+typedef struct kmp_mem_desc { // Memory block descriptor
+  void *ptr_alloc; // Pointer returned by allocator
+  size_t size_a; // Size of allocated memory block (initial+descriptor+align)
+  void *ptr_align; // Pointer to aligned memory, returned
+  kmp_allocator_t *allocator; // allocator
+} kmp_mem_desc_t;
+static int alignment = sizeof(void *); // let's align to pointer size
+
+void *__kmpc_alloc(int gtid, size_t size, omp_allocator_handle_t allocator) {
+  void *ptr = NULL;
+  kmp_allocator_t *al;
+  KMP_DEBUG_ASSERT(__kmp_init_serial);
+  if (allocator == omp_null_allocator)
+    allocator = __kmp_threads[gtid]->th.th_def_allocator;
+
+  KE_TRACE(25, ("__kmpc_alloc: T#%d (%d, %p)\n", gtid, (int)size, allocator));
+  al = RCAST(kmp_allocator_t *, CCAST(omp_allocator_handle_t, allocator));
+
+  int sz_desc = sizeof(kmp_mem_desc_t);
+  kmp_mem_desc_t desc;
+  kmp_uintptr_t addr; // address returned by allocator
+  kmp_uintptr_t addr_align; // address to return to caller
+  kmp_uintptr_t addr_descr; // address of memory block descriptor
+  int align = alignment; // default alignment
+  if (allocator > kmp_max_mem_alloc && al->alignment > 0) {
+    align = al->alignment; // alignment requested by user
+  }
+  desc.size_a = size + sz_desc + align;
+
+  if (__kmp_memkind_available) {
+    if (allocator < kmp_max_mem_alloc) {
+      // pre-defined allocator
+      if (allocator == omp_high_bw_mem_alloc && mk_hbw_preferred) {
+        ptr = kmp_mk_alloc(*mk_hbw_preferred, desc.size_a);
+      } else {
+        ptr = kmp_mk_alloc(*mk_default, desc.size_a);
+      }
+    } else if (al->pool_size > 0) {
+      // custom allocator with pool size requested
+      kmp_uint64 used =
+          KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, desc.size_a);
+      if (used + desc.size_a > al->pool_size) {
+        // not enough space, need to go fallback path
+        KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, -desc.size_a);
+        if (al->fb == OMP_ATV_DEFAULT_MEM_FB) {
+          al = (kmp_allocator_t *)omp_default_mem_alloc;
+          ptr = kmp_mk_alloc(*mk_default, desc.size_a);
+        } else if (al->fb == OMP_ATV_ABORT_FB) {
+          KMP_ASSERT(0); // abort fallback requested
+        } else if (al->fb == OMP_ATV_ALLOCATOR_FB) {
+          KMP_ASSERT(al != al->fb_data);
+          al = al->fb_data;
+          return __kmpc_alloc(gtid, size, (omp_allocator_handle_t)al);
+        } // else ptr == NULL;
+      } else {
+        // pool has enough space
+        ptr = kmp_mk_alloc(*al->memkind, desc.size_a);
+        if (ptr == NULL) {
+          if (al->fb == OMP_ATV_DEFAULT_MEM_FB) {
+            al = (kmp_allocator_t *)omp_default_mem_alloc;
+            ptr = kmp_mk_alloc(*mk_default, desc.size_a);
+          } else if (al->fb == OMP_ATV_ABORT_FB) {
+            KMP_ASSERT(0); // abort fallback requested
+          } else if (al->fb == OMP_ATV_ALLOCATOR_FB) {
+            KMP_ASSERT(al != al->fb_data);
+            al = al->fb_data;
+            return __kmpc_alloc(gtid, size, (omp_allocator_handle_t)al);
+          }
+        }
+      }
+    } else {
+      // custom allocator, pool size not requested
+      ptr = kmp_mk_alloc(*al->memkind, desc.size_a);
+      if (ptr == NULL) {
+        if (al->fb == OMP_ATV_DEFAULT_MEM_FB) {
+          al = (kmp_allocator_t *)omp_default_mem_alloc;
+          ptr = kmp_mk_alloc(*mk_default, desc.size_a);
+        } else if (al->fb == OMP_ATV_ABORT_FB) {
+          KMP_ASSERT(0); // abort fallback requested
+        } else if (al->fb == OMP_ATV_ALLOCATOR_FB) {
+          KMP_ASSERT(al != al->fb_data);
+          al = al->fb_data;
+          return __kmpc_alloc(gtid, size, (omp_allocator_handle_t)al);
+        }
+      }
+    }
+  } else if (allocator < kmp_max_mem_alloc) {
+    // pre-defined allocator
+    if (allocator == omp_high_bw_mem_alloc) {
+      // ptr = NULL;
+    } else {
+      ptr = __kmp_thread_malloc(__kmp_thread_from_gtid(gtid), desc.size_a);
+    }
+  } else if (al->pool_size > 0) {
+    // custom allocator with pool size requested
+    kmp_uint64 used =
+        KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, desc.size_a);
+    if (used + desc.size_a > al->pool_size) {
+      // not enough space, need to go fallback path
+      KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, -desc.size_a);
+      if (al->fb == OMP_ATV_DEFAULT_MEM_FB) {
+        al = (kmp_allocator_t *)omp_default_mem_alloc;
+        ptr = __kmp_thread_malloc(__kmp_thread_from_gtid(gtid), desc.size_a);
+      } else if (al->fb == OMP_ATV_ABORT_FB) {
+        KMP_ASSERT(0); // abort fallback requested
+      } else if (al->fb == OMP_ATV_ALLOCATOR_FB) {
+        KMP_ASSERT(al != al->fb_data);
+        al = al->fb_data;
+        return __kmpc_alloc(gtid, size, (omp_allocator_handle_t)al);
+      } // else ptr == NULL;
+    } else {
+      // pool has enough space
+      ptr = __kmp_thread_malloc(__kmp_thread_from_gtid(gtid), desc.size_a);
+      if (ptr == NULL && al->fb == OMP_ATV_ABORT_FB) {
+        KMP_ASSERT(0); // abort fallback requested
+      } // no sense to look for another fallback because of same internal alloc
+    }
+  } else {
+    // custom allocator, pool size not requested
+    ptr = __kmp_thread_malloc(__kmp_thread_from_gtid(gtid), desc.size_a);
+    if (ptr == NULL && al->fb == OMP_ATV_ABORT_FB) {
+      KMP_ASSERT(0); // abort fallback requested
+    } // no sense to look for another fallback because of same internal alloc
+  }
+  KE_TRACE(10, ("__kmpc_alloc: T#%d %p=alloc(%d)\n", gtid, ptr, desc.size_a));
+  if (ptr == NULL)
+    return NULL;
+
+  addr = (kmp_uintptr_t)ptr;
+  addr_align = (addr + sz_desc + align - 1) & ~(align - 1);
+  addr_descr = addr_align - sz_desc;
+
+  desc.ptr_alloc = ptr;
+  desc.ptr_align = (void *)addr_align;
+  desc.allocator = al;
+  *((kmp_mem_desc_t *)addr_descr) = desc; // save descriptor contents
+  KMP_MB();
+
+  KE_TRACE(25, ("__kmpc_alloc returns %p, T#%d\n", desc.ptr_align, gtid));
+  return desc.ptr_align;
+}
+
+void __kmpc_free(int gtid, void *ptr, const omp_allocator_handle_t allocator) {
+  KE_TRACE(25, ("__kmpc_free: T#%d free(%p,%p)\n", gtid, ptr, allocator));
+  if (ptr == NULL)
+    return;
+
+  kmp_allocator_t *al;
+  omp_allocator_handle_t oal;
+  al = RCAST(kmp_allocator_t *, CCAST(omp_allocator_handle_t, allocator));
+  kmp_mem_desc_t desc;
+  kmp_uintptr_t addr_align; // address to return to caller
+  kmp_uintptr_t addr_descr; // address of memory block descriptor
+
+  addr_align = (kmp_uintptr_t)ptr;
+  addr_descr = addr_align - sizeof(kmp_mem_desc_t);
+  desc = *((kmp_mem_desc_t *)addr_descr); // read descriptor
+
+  KMP_DEBUG_ASSERT(desc.ptr_align == ptr);
+  if (allocator) {
+    KMP_DEBUG_ASSERT(desc.allocator == al || desc.allocator == al->fb_data);
+  }
+  al = desc.allocator;
+  oal = (omp_allocator_handle_t)al; // cast to void* for comparisons
+  KMP_DEBUG_ASSERT(al);
+
+  if (__kmp_memkind_available) {
+    if (oal < kmp_max_mem_alloc) {
+      // pre-defined allocator
+      if (oal == omp_high_bw_mem_alloc && mk_hbw_preferred) {
+        kmp_mk_free(*mk_hbw_preferred, desc.ptr_alloc);
+      } else {
+        kmp_mk_free(*mk_default, desc.ptr_alloc);
+      }
+    } else {
+      if (al->pool_size > 0) { // custom allocator with pool size requested
+        kmp_uint64 used =
+            KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, -desc.size_a);
+        (void)used; // to suppress compiler warning
+        KMP_DEBUG_ASSERT(used >= desc.size_a);
+      }
+      kmp_mk_free(*al->memkind, desc.ptr_alloc);
+    }
+  } else {
+    if (oal > kmp_max_mem_alloc && al->pool_size > 0) {
+      kmp_uint64 used =
+          KMP_TEST_THEN_ADD64((kmp_int64 *)&al->pool_used, -desc.size_a);
+      (void)used; // to suppress compiler warning
+      KMP_DEBUG_ASSERT(used >= desc.size_a);
+    }
+    __kmp_thread_free(__kmp_thread_from_gtid(gtid), desc.ptr_alloc);
+  }
+  KE_TRACE(10, ("__kmpc_free: T#%d freed %p (%p)\n", gtid, desc.ptr_alloc,
+                allocator));
+}
+
+#endif
 
 /* If LEAK_MEMORY is defined, __kmp_free() will *not* free memory. It causes
    memory leaks, but it may be useful for debugging memory corruptions, used
@@ -1499,7 +1690,7 @@ static void *___kmp_allocate_align(size_t size,
                 descr.ptr_allocated));
   if (descr.ptr_allocated == NULL) {
     KMP_FATAL(OutOfHeapMemory);
-  };
+  }
 
   addr_allocated = (kmp_uintptr_t)descr.ptr_allocated;
   addr_aligned =
@@ -1549,33 +1740,6 @@ void *___kmp_allocate(size_t size KMP_SRC_LOC_DECL) {
   KE_TRACE(25, ("<- __kmp_allocate() returns %p\n", ptr));
   return ptr;
 } // func ___kmp_allocate
-
-#if (BUILD_MEMORY == FIRST_TOUCH)
-void *__kmp_ft_page_allocate(size_t size) {
-  void *adr, *aadr;
-
-  const int page_size = KMP_GET_PAGE_SIZE();
-
-  adr = (void *)__kmp_thread_malloc(__kmp_get_thread(),
-                                    size + page_size + KMP_PTR_SKIP);
-  if (adr == 0)
-    KMP_FATAL(OutOfHeapMemory);
-
-  /* check to see if adr is on a page boundary. */
-  if (((kmp_uintptr_t)adr & (page_size - 1)) == 0)
-    /* nothing to do if adr is already on a page boundary. */
-    aadr = adr;
-  else
-    /* else set aadr to the first page boundary in the allocated memory. */
-    aadr = (void *)(((kmp_uintptr_t)adr + page_size) & ~(page_size - 1));
-
-  /* the first touch by the owner thread. */
-  *((void **)aadr) = adr;
-
-  /* skip the memory space used for storing adr above. */
-  return (void *)((char *)aadr + KMP_PTR_SKIP);
-}
-#endif
 
 /* Allocate memory on page boundary, fill allocated memory with 0x00.
    Does not call this func directly! Use __kmp_page_allocate macro instead.
@@ -1689,7 +1853,7 @@ void *___kmp_fast_allocate(kmp_info_t *this_thr, size_t size KMP_SRC_LOC_DECL) {
         ((kmp_mem_descr_t *)((kmp_uintptr_t)ptr - sizeof(kmp_mem_descr_t)))
             ->ptr_aligned);
     goto end;
-  };
+  }
   ptr = TCR_SYNC_PTR(this_thr->th.th_free_lists[index].th_free_list_sync);
   if (ptr != NULL) {
     // no-sync free list is empty, use sync free list (filled in by other

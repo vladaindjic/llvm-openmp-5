@@ -2,16 +2,13 @@
  * kmp_debug.cpp -- debug utilities for the Guide library
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_debug.h" /* really necessary? */
@@ -49,8 +46,8 @@ int __kmp_debug_assert(char const *msg, char const *file, int line) {
     char const *slash = strrchr(file, '/');
     if (slash != NULL) {
       file = slash + 1;
-    }; // if
-  }; // if
+    }
+  }
 
 #ifdef KMP_DEBUG
   __kmp_acquire_bootstrap_lock(&__kmp_stdio_lock);
@@ -74,8 +71,8 @@ int __kmp_debug_assert(char const *msg, char const *file, int line) {
 #endif // USE_ASSERT_SEG
 #endif
 
-  __kmp_msg(kmp_ms_fatal, KMP_MSG(AssertionFailure, file, line),
-            KMP_HNT(SubmitBugReport), __kmp_msg_null);
+  __kmp_fatal(KMP_MSG(AssertionFailure, file, line), KMP_HNT(SubmitBugReport),
+              __kmp_msg_null);
 
   return 0;
 

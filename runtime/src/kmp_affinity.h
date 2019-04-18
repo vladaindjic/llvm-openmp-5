@@ -2,16 +2,13 @@
  * kmp_affinity.h -- header for affinity management
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #ifndef KMP_AFFINITY_H
 #define KMP_AFFINITY_H
@@ -64,8 +61,7 @@ public:
       }
       int error = errno;
       if (abort_on_error) {
-        __kmp_msg(kmp_ms_fatal, KMP_MSG(FatalSysError), KMP_ERR(error),
-                  __kmp_msg_null);
+        __kmp_fatal(KMP_MSG(FatalSysError), KMP_ERR(error), __kmp_msg_null);
       }
       return error;
     }
@@ -79,19 +75,17 @@ public:
       }
       int error = errno;
       if (abort_on_error) {
-        __kmp_msg(kmp_ms_fatal, KMP_MSG(FatalSysError), KMP_ERR(error),
-                  __kmp_msg_null);
+        __kmp_fatal(KMP_MSG(FatalSysError), KMP_ERR(error), __kmp_msg_null);
       }
       return error;
     }
     int get_proc_group() const override {
-      int i;
       int group = -1;
 #if KMP_OS_WINDOWS
       if (__kmp_num_proc_groups == 1) {
         return 1;
       }
-      for (i = 0; i < __kmp_num_proc_groups; i++) {
+      for (int i = 0; i < __kmp_num_proc_groups; i++) {
         // On windows, the long type is always 32 bits
         unsigned long first_32_bits = hwloc_bitmap_to_ith_ulong(mask, i * 2);
         unsigned long second_32_bits =
@@ -307,8 +301,7 @@ class KMPNativeAffinity : public KMPAffinity {
       }
       int error = errno;
       if (abort_on_error) {
-        __kmp_msg(kmp_ms_fatal, KMP_MSG(FatalSysError), KMP_ERR(error),
-                  __kmp_msg_null);
+        __kmp_fatal(KMP_MSG(FatalSysError), KMP_ERR(error), __kmp_msg_null);
       }
       return error;
     }
@@ -322,8 +315,7 @@ class KMPNativeAffinity : public KMPAffinity {
       }
       int error = errno;
       if (abort_on_error) {
-        __kmp_msg(kmp_ms_fatal, KMP_MSG(FatalSysError), KMP_ERR(error),
-                  __kmp_msg_null);
+        __kmp_fatal(KMP_MSG(FatalSysError), KMP_ERR(error), __kmp_msg_null);
       }
       return error;
     }
@@ -339,7 +331,7 @@ class KMPNativeAffinity : public KMPAffinity {
   void deallocate_mask(KMPAffinity::Mask *m) override {
     KMPNativeAffinity::Mask *native_mask =
         static_cast<KMPNativeAffinity::Mask *>(m);
-    delete m;
+    delete native_mask;
   }
   KMPAffinity::Mask *allocate_mask_array(int num) override {
     return new Mask[num];
@@ -382,26 +374,26 @@ class KMPNativeAffinity : public KMPAffinity {
       mask[i / BITS_PER_MASK_T] &= ~((mask_t)1 << (i % BITS_PER_MASK_T));
     }
     void zero() override {
-      for (size_t i = 0; i < __kmp_num_proc_groups; ++i)
+      for (int i = 0; i < __kmp_num_proc_groups; ++i)
         mask[i] = 0;
     }
     void copy(const KMPAffinity::Mask *src) override {
       const Mask *convert = static_cast<const Mask *>(src);
-      for (size_t i = 0; i < __kmp_num_proc_groups; ++i)
+      for (int i = 0; i < __kmp_num_proc_groups; ++i)
         mask[i] = convert->mask[i];
     }
     void bitwise_and(const KMPAffinity::Mask *rhs) override {
       const Mask *convert = static_cast<const Mask *>(rhs);
-      for (size_t i = 0; i < __kmp_num_proc_groups; ++i)
+      for (int i = 0; i < __kmp_num_proc_groups; ++i)
         mask[i] &= convert->mask[i];
     }
     void bitwise_or(const KMPAffinity::Mask *rhs) override {
       const Mask *convert = static_cast<const Mask *>(rhs);
-      for (size_t i = 0; i < __kmp_num_proc_groups; ++i)
+      for (int i = 0; i < __kmp_num_proc_groups; ++i)
         mask[i] |= convert->mask[i];
     }
     void bitwise_not() override {
-      for (size_t i = 0; i < __kmp_num_proc_groups; ++i)
+      for (int i = 0; i < __kmp_num_proc_groups; ++i)
         mask[i] = ~(mask[i]);
     }
     int begin() const override {
@@ -438,8 +430,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (__kmp_SetThreadGroupAffinity(GetCurrentThread(), &ga, NULL) == 0) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetThreadAffMask),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(CantSetThreadAffMask), KMP_ERR(error),
+                        __kmp_msg_null);
           }
           return error;
         }
@@ -447,8 +439,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (!SetThreadAffinityMask(GetCurrentThread(), *mask)) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetThreadAffMask),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(CantSetThreadAffMask), KMP_ERR(error),
+                        __kmp_msg_null);
           }
           return error;
         }
@@ -463,9 +455,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (__kmp_GetThreadGroupAffinity(GetCurrentThread(), &ga) == 0) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal,
-                      KMP_MSG(FunctionError, "GetThreadGroupAffinity()"),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(FunctionError, "GetThreadGroupAffinity()"),
+                        KMP_ERR(error), __kmp_msg_null);
           }
           return error;
         }
@@ -479,9 +470,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (!GetProcessAffinityMask(GetCurrentProcess(), &newMask, &sysMask)) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal,
-                      KMP_MSG(FunctionError, "GetProcessAffinityMask()"),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(FunctionError, "GetProcessAffinityMask()"),
+                        KMP_ERR(error), __kmp_msg_null);
           }
           return error;
         }
@@ -489,9 +479,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (!retval) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal,
-                      KMP_MSG(FunctionError, "SetThreadAffinityMask()"),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(FunctionError, "SetThreadAffinityMask()"),
+                        KMP_ERR(error), __kmp_msg_null);
           }
           return error;
         }
@@ -499,9 +488,8 @@ class KMPNativeAffinity : public KMPAffinity {
         if (!newMask) {
           DWORD error = GetLastError();
           if (abort_on_error) {
-            __kmp_msg(kmp_ms_fatal,
-                      KMP_MSG(FunctionError, "SetThreadAffinityMask()"),
-                      KMP_ERR(error), __kmp_msg_null);
+            __kmp_fatal(KMP_MSG(FunctionError, "SetThreadAffinityMask()"),
+                        KMP_ERR(error), __kmp_msg_null);
           }
         }
         *mask = retval;

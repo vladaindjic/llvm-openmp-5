@@ -2,16 +2,13 @@
  * z_Linux_util.cpp -- platform specific routines.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_affinity.h"
@@ -24,7 +21,7 @@
 #include "kmp_wait_release.h"
 #include "kmp_wrapper_getpid.h"
 
-#if !KMP_OS_FREEBSD && !KMP_OS_NETBSD
+#if !KMP_OS_DRAGONFLY && !KMP_OS_FREEBSD && !KMP_OS_NETBSD && !KMP_OS_OPENBSD
 #include <alloca.h>
 #endif
 #include <math.h> // HUGE_VAL.
@@ -52,8 +49,11 @@
 #elif KMP_OS_DARWIN
 #include <mach/mach.h>
 #include <sys/sysctl.h>
-#elif KMP_OS_FREEBSD
+#elif KMP_OS_DRAGONFLY || KMP_OS_FREEBSD
 #include <pthread_np.h>
+#elif KMP_OS_NETBSD
+#include <sys/types.h>
+#include <sys/sysctl.h>
 #endif
 
 #include <ctype.h>
@@ -433,11 +433,11 @@ void __kmp_terminate_thread(int gtid) {
   KA_TRACE(10, ("__kmp_terminate_thread: kill (%d)\n", gtid));
   status = pthread_cancel(th->th.th_info.ds.ds_thread);
   if (status != 0 && status != ESRCH) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantTerminateWorkerThread), KMP_ERR(status),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantTerminateWorkerThread), KMP_ERR(status),
+                __kmp_msg_null);
+  }
 #endif
-  __kmp_yield(TRUE);
+  KMP_YIELD(TRUE);
 } //
 
 /* Set thread stack info according to values returned by pthread_getattr_np().
@@ -446,8 +446,8 @@ void __kmp_terminate_thread(int gtid) {
    determined exactly, FALSE if incremental refinement is necessary. */
 static kmp_int32 __kmp_set_stack_info(int gtid, kmp_info_t *th) {
   int stack_data;
-#if KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_NETBSD
-  /* Linux* OS only -- no pthread_getattr_np support on OS X* */
+#if KMP_OS_LINUX || KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD ||     \
+        KMP_OS_HURD
   pthread_attr_t attr;
   int status;
   size_t size = 0;
@@ -461,7 +461,7 @@ static kmp_int32 __kmp_set_stack_info(int gtid, kmp_info_t *th) {
     /* Fetch the real thread attributes */
     status = pthread_attr_init(&attr);
     KMP_CHECK_SYSFAIL("pthread_attr_init", status);
-#if KMP_OS_FREEBSD || KMP_OS_NETBSD
+#if KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD
     status = pthread_attr_get_np(pthread_self(), &attr);
     KMP_CHECK_SYSFAIL("pthread_attr_get_np", status);
 #else
@@ -485,7 +485,8 @@ static kmp_int32 __kmp_set_stack_info(int gtid, kmp_info_t *th) {
     TCW_4(th->th.th_info.ds.ds_stackgrow, FALSE);
     return TRUE;
   }
-#endif /* KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_NETBSD */
+#endif /* KMP_OS_LINUX || KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD ||
+              KMP_OS_HURD */
   /* Use incremental refinement starting from initial conservative estimate */
   TCW_PTR(th->th.th_info.ds.ds_stacksize, 0);
   TCW_PTR(th->th.th_info.ds.ds_stackbase, &stack_data);
@@ -499,7 +500,8 @@ static void *__kmp_launch_worker(void *thr) {
   sigset_t new_set, old_set;
 #endif /* KMP_BLOCK_SIGNALS */
   void *exit_val;
-#if KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_NETBSD
+#if KMP_OS_LINUX || KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD ||     \
+        KMP_OS_OPENBSD || KMP_OS_HURD
   void *volatile padding = 0;
 #endif
   int gtid;
@@ -510,9 +512,9 @@ static void *__kmp_launch_worker(void *thr) {
   __kmp_gtid = gtid;
 #endif
 #if KMP_STATS_ENABLED
-  // set __thread local index to point to thread-specific stats
+  // set thread local index to point to thread-specific stats
   __kmp_stats_thread_ptr = ((kmp_info_t *)thr)->th.th_stats;
-  KMP_START_EXPLICIT_TIMER(OMP_worker_thread_life);
+  __kmp_stats_thread_ptr->startLife();
   KMP_SET_THREAD_STATE(IDLE);
   KMP_INIT_PARTITIONED_TIMERS(OMP_idle);
 #endif
@@ -547,7 +549,8 @@ static void *__kmp_launch_worker(void *thr) {
   KMP_CHECK_SYSFAIL("pthread_sigmask", status);
 #endif /* KMP_BLOCK_SIGNALS */
 
-#if KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_NETBSD
+#if KMP_OS_LINUX || KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD ||     \
+        KMP_OS_OPENBSD
   if (__kmp_stkoffset > 0 && gtid > 0) {
     padding = KMP_ALLOCA(gtid * __kmp_stkoffset);
   }
@@ -577,8 +580,6 @@ static void *__kmp_launch_monitor(void *thr) {
   sigset_t new_set;
 #endif /* KMP_BLOCK_SIGNALS */
   struct timespec interval;
-  int yield_count;
-  int yield_cycles = 0;
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
 
@@ -635,7 +636,7 @@ static void *__kmp_launch_monitor(void *thr) {
           if (__kmp_generate_warnings == kmp_warnings_off) {
             __kmp_str_free(&err_code.str);
           }
-        }; // if
+        }
       } else {
         // We cannot abort here, because number of CPUs may be enough for all
         // the threads, including the monitor thread, so application could
@@ -643,8 +644,8 @@ static void *__kmp_launch_monitor(void *thr) {
         __kmp_msg(kmp_ms_warning, KMP_MSG(RunningAtMaxPriority),
                   KMP_MSG(MonitorWillStarve), KMP_HNT(RunningAtMaxPriority),
                   __kmp_msg_null);
-      }; // if
-    }; // if
+      }
+    }
     // AC: free thread that waits for monitor started
     TCW_4(__kmp_global.g.g_time.dt.t_value, 0);
   }
@@ -661,13 +662,6 @@ static void *__kmp_launch_monitor(void *thr) {
   }
 
   KA_TRACE(10, ("__kmp_launch_monitor: #2 monitor\n"));
-
-  if (__kmp_yield_cycle) {
-    __kmp_yielding_on = 0; /* Start out with yielding shut off */
-    yield_count = __kmp_yield_off_count;
-  } else {
-    __kmp_yielding_on = 1; /* Yielding is on permanently */
-  }
 
   while (!TCR_4(__kmp_global.g.g_done)) {
     struct timespec now;
@@ -698,27 +692,11 @@ static void *__kmp_launch_monitor(void *thr) {
       if (status != 0) {
         if (status != ETIMEDOUT && status != EINTR) {
           KMP_SYSFAIL("pthread_cond_timedwait", status);
-        };
-      };
-    };
+        }
+      }
+    }
     status = pthread_mutex_unlock(&__kmp_wait_mx.m_mutex);
     KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
-
-    if (__kmp_yield_cycle) {
-      yield_cycles++;
-      if ((yield_cycles % yield_count) == 0) {
-        if (__kmp_yielding_on) {
-          __kmp_yielding_on = 0; /* Turn it off now */
-          yield_count = __kmp_yield_off_count;
-        } else {
-          __kmp_yielding_on = 1; /* Turn it on now */
-          yield_count = __kmp_yield_on_count;
-        }
-        yield_cycles = 0;
-      }
-    } else {
-      __kmp_yielding_on = 1;
-    }
 
     TCW_4(__kmp_global.g.g_time.dt.t_value,
           TCR_4(__kmp_global.g.g_time.dt.t_value) + 1);
@@ -780,7 +758,7 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
 
   // th->th.th_stats is used to transfer thread-specific stats-pointer to
   // __kmp_launch_worker. So when thread is created (goes into
-  // __kmp_launch_worker) it will set its __thread local pointer to
+  // __kmp_launch_worker) it will set its thread local pointer to
   // th->th.th_stats
   if (!KMP_UBER_GTID(gtid)) {
     th->th.th_stats = __kmp_stats_list->push_back(gtid);
@@ -799,7 +777,7 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
     __kmp_set_stack_info(gtid, th);
     __kmp_check_stack_overlap(th);
     return;
-  }; // if
+  }
 
   KA_TRACE(10, ("__kmp_create_worker: try to create thread (%d)\n", gtid));
 
@@ -808,14 +786,12 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
 #ifdef KMP_THREAD_ATTR
   status = pthread_attr_init(&thread_attr);
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantInitThreadAttrs), KMP_ERR(status),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantInitThreadAttrs), KMP_ERR(status), __kmp_msg_null);
+  }
   status = pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetWorkerState), KMP_ERR(status),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantSetWorkerState), KMP_ERR(status), __kmp_msg_null);
+  }
 
   /* Set stack size for this thread now.
      The multiple of 2 is there because on some machines, requesting an unusual
@@ -842,13 +818,13 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
                     "bytes\n",
                     gtid, KMP_DEFAULT_STKSIZE, __kmp_stksize, stack_size));
       status = pthread_attr_setstacksize(&thread_attr, stack_size);
-    }; // if
-  }; // if
+    }
+  }
 #endif /* KMP_BACKUP_STKSIZE */
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetWorkerStackSize, stack_size),
-              KMP_ERR(status), KMP_HNT(ChangeWorkerStackSize), __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantSetWorkerStackSize, stack_size), KMP_ERR(status),
+                KMP_HNT(ChangeWorkerStackSize), __kmp_msg_null);
+  }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 
 #endif /* KMP_THREAD_ATTR */
@@ -858,22 +834,20 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
   if (status != 0 || !handle) { // ??? Why do we check handle??
 #ifdef _POSIX_THREAD_ATTR_STACKSIZE
     if (status == EINVAL) {
-      __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetWorkerStackSize, stack_size),
-                KMP_ERR(status), KMP_HNT(IncreaseWorkerStackSize),
-                __kmp_msg_null);
-    };
+      __kmp_fatal(KMP_MSG(CantSetWorkerStackSize, stack_size), KMP_ERR(status),
+                  KMP_HNT(IncreaseWorkerStackSize), __kmp_msg_null);
+    }
     if (status == ENOMEM) {
-      __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetWorkerStackSize, stack_size),
-                KMP_ERR(status), KMP_HNT(DecreaseWorkerStackSize),
-                __kmp_msg_null);
-    };
+      __kmp_fatal(KMP_MSG(CantSetWorkerStackSize, stack_size), KMP_ERR(status),
+                  KMP_HNT(DecreaseWorkerStackSize), __kmp_msg_null);
+    }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
     if (status == EAGAIN) {
-      __kmp_msg(kmp_ms_fatal, KMP_MSG(NoResourcesForWorkerThread),
-                KMP_ERR(status), KMP_HNT(Decrease_NUM_THREADS), __kmp_msg_null);
-    }; // if
+      __kmp_fatal(KMP_MSG(NoResourcesForWorkerThread), KMP_ERR(status),
+                  KMP_HNT(Decrease_NUM_THREADS), __kmp_msg_null);
+    }
     KMP_SYSFAIL("pthread_create", status);
-  }; // if
+  }
 
   th->th.th_info.ds.ds_thread = handle;
 
@@ -886,7 +860,7 @@ void __kmp_create_worker(int gtid, kmp_info_t *th, size_t stack_size) {
     if (__kmp_generate_warnings == kmp_warnings_off) {
       __kmp_str_free(&err_code.str);
     }
-  }; // if
+  }
 #endif /* KMP_THREAD_ATTR */
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
@@ -931,14 +905,12 @@ void __kmp_create_monitor(kmp_info_t *th) {
   }
   status = pthread_attr_init(&thread_attr);
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantInitThreadAttrs), KMP_ERR(status),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantInitThreadAttrs), KMP_ERR(status), __kmp_msg_null);
+  }
   status = pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(CantSetMonitorState), KMP_ERR(status),
-              __kmp_msg_null);
-  }; // if
+    __kmp_fatal(KMP_MSG(CantSetMonitorState), KMP_ERR(status), __kmp_msg_null);
+  }
 
 #ifdef _POSIX_THREAD_ATTR_STACKSIZE
   status = pthread_attr_getstacksize(&thread_attr, &size);
@@ -978,7 +950,7 @@ retry:
     if (__kmp_generate_warnings == kmp_warnings_off) {
       __kmp_str_free(&err_code.str);
     }
-  }; // if
+  }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
 
   status =
@@ -991,23 +963,22 @@ retry:
         __kmp_monitor_stksize *= 2;
         goto retry;
       }
-      __kmp_msg(
-          kmp_ms_fatal, KMP_MSG(CantSetMonitorStackSize, __kmp_monitor_stksize),
-          KMP_ERR(status), KMP_HNT(IncreaseMonitorStackSize), __kmp_msg_null);
-    }; // if
+      __kmp_fatal(KMP_MSG(CantSetMonitorStackSize, __kmp_monitor_stksize),
+                  KMP_ERR(status), KMP_HNT(IncreaseMonitorStackSize),
+                  __kmp_msg_null);
+    }
     if (status == ENOMEM) {
-      __kmp_msg(
-          kmp_ms_fatal, KMP_MSG(CantSetMonitorStackSize, __kmp_monitor_stksize),
-          KMP_ERR(status), KMP_HNT(DecreaseMonitorStackSize), __kmp_msg_null);
-    }; // if
+      __kmp_fatal(KMP_MSG(CantSetMonitorStackSize, __kmp_monitor_stksize),
+                  KMP_ERR(status), KMP_HNT(DecreaseMonitorStackSize),
+                  __kmp_msg_null);
+    }
 #endif /* _POSIX_THREAD_ATTR_STACKSIZE */
     if (status == EAGAIN) {
-      __kmp_msg(kmp_ms_fatal, KMP_MSG(NoResourcesForMonitorThread),
-                KMP_ERR(status), KMP_HNT(DecreaseNumberOfThreadsInUse),
-                __kmp_msg_null);
-    }; // if
+      __kmp_fatal(KMP_MSG(NoResourcesForMonitorThread), KMP_ERR(status),
+                  KMP_HNT(DecreaseNumberOfThreadsInUse), __kmp_msg_null);
+    }
     KMP_SYSFAIL("pthread_create", status);
-  }; // if
+  }
 
   th->th.th_info.ds.ds_thread = handle;
 
@@ -1015,8 +986,8 @@ retry:
   // Wait for the monitor thread is really started and set its *priority*.
   KMP_DEBUG_ASSERT(sizeof(kmp_uint32) ==
                    sizeof(__kmp_global.g.g_time.dt.t_value));
-  __kmp_wait_yield_4((kmp_uint32 volatile *)&__kmp_global.g.g_time.dt.t_value,
-                     -1, &__kmp_neq_4, NULL);
+  __kmp_wait_4((kmp_uint32 volatile *)&__kmp_global.g.g_time.dt.t_value, -1,
+               &__kmp_neq_4, NULL);
 #endif // KMP_REAL_TIME_FIX
 
 #ifdef KMP_THREAD_ATTR
@@ -1028,7 +999,7 @@ retry:
     if (__kmp_generate_warnings == kmp_warnings_off) {
       __kmp_str_free(&err_code.str);
     }
-  }; // if
+  }
 #endif
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
@@ -1061,7 +1032,7 @@ void __kmp_reap_monitor(kmp_info_t *th) {
   if (th->th.th_info.ds.ds_gtid != KMP_GTID_MONITOR) {
     KA_TRACE(10, ("__kmp_reap_monitor: monitor did not start, returning\n"));
     return;
-  }; // if
+  }
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
 
@@ -1076,8 +1047,7 @@ void __kmp_reap_monitor(kmp_info_t *th) {
   KA_TRACE(10, ("__kmp_reap_monitor: try to join with monitor\n"));
   status = pthread_join(th->th.th_info.ds.ds_thread, &exit_val);
   if (exit_val != th) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(ReapMonitorError), KMP_ERR(status),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(ReapMonitorError), KMP_ERR(status), __kmp_msg_null);
   }
 
   th->th.th_info.ds.ds_tid = KMP_GTID_DNE;
@@ -1104,8 +1074,7 @@ void __kmp_reap_worker(kmp_info_t *th) {
 #ifdef KMP_DEBUG
   /* Don't expose these to the user until we understand when they trigger */
   if (status != 0) {
-    __kmp_msg(kmp_ms_fatal, KMP_MSG(ReapWorkerError), KMP_ERR(status),
-              __kmp_msg_null);
+    __kmp_fatal(KMP_MSG(ReapWorkerError), KMP_ERR(status), __kmp_msg_null);
   }
   if (exit_val != th) {
     KA_TRACE(10, ("__kmp_reap_worker: worker T#%d did not reap properly, "
@@ -1147,7 +1116,7 @@ static void __kmp_team_handler(int signo) {
     case SIGTERM:
       if (__kmp_debug_buf) {
         __kmp_dump_debug_buffer();
-      }; // if
+      }
       KMP_MB(); // Flush all pending memory write invalidates.
       TCW_4(__kmp_global.g.g_abort, signo);
       KMP_MB(); // Flush all pending memory write invalidates.
@@ -1159,8 +1128,8 @@ static void __kmp_team_handler(int signo) {
       __kmp_debug_printf("__kmp_team_handler: unknown signal type");
 #endif
       break;
-    }; // switch
-  }; // if
+    }
+  }
 } // __kmp_team_handler
 
 static void __kmp_sigaction(int signum, const struct sigaction *act,
@@ -1186,11 +1155,11 @@ static void __kmp_install_one_handler(int sig, sig_func_t handler_func,
     } else {
       // Restore/keep user's handler if one previously installed.
       __kmp_sigaction(sig, &old_action, NULL);
-    }; // if
+    }
   } else {
     // Save initial/system signal handlers to see if user handlers installed.
     __kmp_sigaction(sig, NULL, &__kmp_sighldrs[sig]);
-  }; // if
+  }
   KMP_MB(); // Flush all pending memory write invalidates.
 } // __kmp_install_one_handler
 
@@ -1207,10 +1176,10 @@ static void __kmp_remove_one_handler(int sig) {
                     "restoring: sig=%d\n",
                     sig));
       __kmp_sigaction(sig, &old, NULL);
-    }; // if
+    }
     sigdelset(&__kmp_sigset, sig);
     KMP_MB(); // Flush all pending memory write invalidates.
-  }; // if
+  }
 } // __kmp_remove_one_handler
 
 void __kmp_install_signals(int parallel_init) {
@@ -1234,7 +1203,7 @@ void __kmp_install_signals(int parallel_init) {
 #ifdef SIGPIPE
     __kmp_install_one_handler(SIGPIPE, __kmp_team_handler, parallel_init);
 #endif // SIGPIPE
-  }; // if
+  }
 } // __kmp_install_signals
 
 void __kmp_remove_signals(void) {
@@ -1242,7 +1211,7 @@ void __kmp_remove_signals(void) {
   KB_TRACE(10, ("__kmp_remove_signals()\n"));
   for (sig = 1; sig < NSIG; ++sig) {
     __kmp_remove_one_handler(sig);
-  }; // for sig
+  }
 } // __kmp_remove_signals
 
 #endif // KMP_HANDLE_SIGNALS
@@ -1264,16 +1233,21 @@ void __kmp_disable(int *old_state) {
 #endif
 }
 
-static void __kmp_atfork_prepare(void) { /*  nothing to do  */
+static void __kmp_atfork_prepare(void) {
+  __kmp_acquire_bootstrap_lock(&__kmp_initz_lock);
+  __kmp_acquire_bootstrap_lock(&__kmp_forkjoin_lock);
 }
 
-static void __kmp_atfork_parent(void) { /*  nothing to do  */
+static void __kmp_atfork_parent(void) {
+  __kmp_release_bootstrap_lock(&__kmp_initz_lock);
+  __kmp_release_bootstrap_lock(&__kmp_forkjoin_lock);
 }
 
 /* Reset the library so execution in the child starts "all over again" with
    clean data structures in initial states.  Don't worry about freeing memory
    allocated by parent, just abandon it to be safe. */
 static void __kmp_atfork_child(void) {
+  __kmp_release_bootstrap_lock(&__kmp_forkjoin_lock);
   /* TODO make sure this is done right for nested/sibling */
   // ATT:  Memory leaks are here? TODO: Check it and fix.
   /* KMP_ASSERT( 0 ); */
@@ -1318,6 +1292,10 @@ static void __kmp_atfork_child(void) {
   __kmp_all_nth = 0;
   TCW_4(__kmp_nth, 0);
 
+  __kmp_thread_pool = NULL;
+  __kmp_thread_pool_insert_pt = NULL;
+  __kmp_team_pool = NULL;
+
   /* Must actually zero all the *cache arguments passed to __kmpc_threadprivate
      here so threadprivate doesn't use stale data */
   KA_TRACE(10, ("__kmp_atfork_child: checking cache address list %p\n",
@@ -1340,6 +1318,11 @@ static void __kmp_atfork_child(void) {
   __kmp_init_bootstrap_lock(&__kmp_initz_lock);
   __kmp_init_bootstrap_lock(&__kmp_stdio_lock);
   __kmp_init_bootstrap_lock(&__kmp_console_lock);
+  __kmp_init_bootstrap_lock(&__kmp_task_team_lock);
+
+#if USE_ITT_BUILD
+  __kmp_itt_reset(); // reset ITT's global state
+#endif /* USE_ITT_BUILD */
 
   /* This is necessary to make sure no stale data is left around */
   /* AC: customers complain that we use unsafe routines in the atfork
@@ -1369,7 +1352,7 @@ void __kmp_suspend_initialize(void) {
   KMP_CHECK_SYSFAIL("pthread_condattr_init", status);
 }
 
-static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
+void __kmp_suspend_initialize_thread(kmp_info_t *th) {
   ANNOTATE_HAPPENS_AFTER(&th->th.th_suspend_init_count);
   if (th->th.th_suspend_init_count <= __kmp_fork_count) {
     /* this means we haven't initialized the suspension pthread objects for this
@@ -1383,7 +1366,7 @@ static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
     KMP_CHECK_SYSFAIL("pthread_mutex_init", status);
     *(volatile int *)&th->th.th_suspend_init_count = __kmp_fork_count + 1;
     ANNOTATE_HAPPENS_BEFORE(&th->th.th_suspend_init_count);
-  };
+  }
 }
 
 void __kmp_suspend_uninitialize_thread(kmp_info_t *th) {
@@ -1395,16 +1378,30 @@ void __kmp_suspend_uninitialize_thread(kmp_info_t *th) {
     status = pthread_cond_destroy(&th->th.th_suspend_cv.c_cond);
     if (status != 0 && status != EBUSY) {
       KMP_SYSFAIL("pthread_cond_destroy", status);
-    };
+    }
     status = pthread_mutex_destroy(&th->th.th_suspend_mx.m_mutex);
     if (status != 0 && status != EBUSY) {
       KMP_SYSFAIL("pthread_mutex_destroy", status);
-    };
+    }
     --th->th.th_suspend_init_count;
     KMP_DEBUG_ASSERT(th->th.th_suspend_init_count == __kmp_fork_count);
   }
 }
 
+// return true if lock obtained, false otherwise
+int __kmp_try_suspend_mx(kmp_info_t *th) {
+  return (pthread_mutex_trylock(&th->th.th_suspend_mx.m_mutex) == 0);
+}
+
+void __kmp_lock_suspend_mx(kmp_info_t *th) {
+  int status = pthread_mutex_lock(&th->th.th_suspend_mx.m_mutex);
+  KMP_CHECK_SYSFAIL("pthread_mutex_lock", status);
+}
+
+void __kmp_unlock_suspend_mx(kmp_info_t *th) {
+  int status = pthread_mutex_unlock(&th->th.th_suspend_mx.m_mutex);
+  KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
+}
 
 /* This routine puts the calling thread to sleep after setting the
    sleep bit for the indicated flag variable to true. */
@@ -1429,10 +1426,18 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
   /* TODO: shouldn't this use release semantics to ensure that
      __kmp_suspend_initialize_thread gets called first? */
   old_spin = flag->set_sleeping();
-
+#if OMP_50_ENABLED
+  if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME &&
+      __kmp_pause_status != kmp_soft_paused) {
+    flag->unset_sleeping();
+    status = pthread_mutex_unlock(&th->th.th_suspend_mx.m_mutex);
+    KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
+    return;
+  }
+#endif
   KF_TRACE(5, ("__kmp_suspend_template: T#%d set sleep bit for spin(%p)==%x,"
                " was %x\n",
-               th_gtid, flag->get(), *(flag->get()), old_spin));
+               th_gtid, flag->get(), flag->load(), old_spin));
 
   if (flag->done_check_val(old_spin)) {
     old_spin = flag->unset_sleeping();
@@ -1460,7 +1465,7 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
         th->th.th_active = FALSE;
         if (th->th.th_active_in_pool) {
           th->th.th_active_in_pool = FALSE;
-          KMP_TEST_THEN_DEC32(&__kmp_thread_pool_active_nth);
+          KMP_ATOMIC_DEC(&__kmp_thread_pool_active_nth);
           KMP_DEBUG_ASSERT(TCR_4(__kmp_thread_pool_active_nth) >= 0);
         }
         deactivated = TRUE;
@@ -1516,7 +1521,7 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
     if (deactivated) {
       th->th.th_active = TRUE;
       if (TCR_4(th->th.th_in_pool)) {
-        KMP_TEST_THEN_INC32(&__kmp_thread_pool_active_nth);
+        KMP_ATOMIC_INC(&__kmp_thread_pool_active_nth);
         th->th.th_active_in_pool = TRUE;
       }
     }
@@ -1589,7 +1594,7 @@ static inline void __kmp_resume_template(int target_gtid, C *flag) {
       KF_TRACE(5, ("__kmp_resume_template: T#%d exiting, thread T#%d already "
                    "awake: flag(%p): "
                    "%u => %u\n",
-                   gtid, target_gtid, flag->get(), old_spin, *flag->get()));
+                   gtid, target_gtid, flag->get(), old_spin, flag->load()));
       status = pthread_mutex_unlock(&th->th.th_suspend_mx.m_mutex);
       KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
       return;
@@ -1597,7 +1602,7 @@ static inline void __kmp_resume_template(int target_gtid, C *flag) {
     KF_TRACE(5, ("__kmp_resume_template: T#%d about to wakeup T#%d, reset "
                  "sleep bit for flag's loc(%p): "
                  "%u => %u\n",
-                 gtid, target_gtid, flag->get(), old_spin, *flag->get()));
+                 gtid, target_gtid, flag->get(), old_spin, flag->load()));
   }
   TCW_PTR(th->th.th_sleep_loc, NULL);
 
@@ -1658,18 +1663,7 @@ void __kmp_resume_monitor() {
 }
 #endif // KMP_USE_MONITOR
 
-void __kmp_yield(int cond) {
-  if (!cond)
-    return;
-#if KMP_USE_MONITOR
-  if (!__kmp_yielding_on)
-    return;
-#else
-  if (__kmp_yield_cycle && !KMP_YIELD_NOW())
-    return;
-#endif
-  sched_yield();
-}
+void __kmp_yield() { sched_yield(); }
 
 void __kmp_gtid_set_specific(int gtid) {
   if (__kmp_init_gtid) {
@@ -1763,7 +1757,8 @@ static int __kmp_get_xproc(void) {
 
   int r = 0;
 
-#if KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_NETBSD
+#if KMP_OS_LINUX || KMP_OS_DRAGONFLY || KMP_OS_FREEBSD || KMP_OS_NETBSD ||     \
+        KMP_OS_OPENBSD || KMP_OS_HURD
 
   r = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -1783,7 +1778,7 @@ static int __kmp_get_xproc(void) {
   } else {
     KMP_WARNING(CantGetNumAvailCPU);
     KMP_INFORM(AssumedNumCPU);
-  }; // if
+  }
 
 #else
 
@@ -1816,12 +1811,12 @@ void __kmp_runtime_initialize(void) {
 
   if (__kmp_init_runtime) {
     return;
-  }; // if
+  }
 
 #if (KMP_ARCH_X86 || KMP_ARCH_X86_64)
   if (!__kmp_cpuinfo.initialized) {
     __kmp_query_cpuid(&__kmp_cpuinfo);
-  }; // if
+  }
 #endif /* KMP_ARCH_X86 || KMP_ARCH_X86_64 */
 
   __kmp_xproc = __kmp_get_xproc();
@@ -1871,7 +1866,7 @@ void __kmp_runtime_destroy(void) {
 
   if (!__kmp_init_runtime) {
     return; // Nothing to do.
-  };
+  }
 
 #if USE_ITT_BUILD
   __kmp_itt_destroy();
@@ -1926,20 +1921,27 @@ void __kmp_elapsed_tick(double *t) { *t = 1 / (double)CLOCKS_PER_SEC; }
 kmp_uint64 __kmp_now_nsec() {
   struct timeval t;
   gettimeofday(&t, NULL);
-  return KMP_NSEC_PER_SEC * t.tv_sec + 1000 * t.tv_usec;
+  kmp_uint64 nsec = (kmp_uint64)KMP_NSEC_PER_SEC * (kmp_uint64)t.tv_sec +
+                    (kmp_uint64)1000 * (kmp_uint64)t.tv_usec;
+  return nsec;
 }
 
 #if KMP_ARCH_X86 || KMP_ARCH_X86_64
 /* Measure clock ticks per millisecond */
 void __kmp_initialize_system_tick() {
+  kmp_uint64 now, nsec2, diff;
   kmp_uint64 delay = 100000; // 50~100 usec on most machines.
   kmp_uint64 nsec = __kmp_now_nsec();
   kmp_uint64 goal = __kmp_hardware_timestamp() + delay;
-  kmp_uint64 now;
   while ((now = __kmp_hardware_timestamp()) < goal)
     ;
-  __kmp_ticks_per_msec =
-      (kmp_uint64)(1e6 * (delay + (now - goal)) / (__kmp_now_nsec() - nsec));
+  nsec2 = __kmp_now_nsec();
+  diff = nsec2 - nsec;
+  if (diff > 0) {
+    kmp_uint64 tpms = (kmp_uint64)(1e6 * (delay + (now - goal)) / diff);
+    if (tpms > 0)
+      __kmp_ticks_per_msec = tpms;
+  }
 }
 #endif
 
@@ -1951,9 +1953,9 @@ int __kmp_is_address_mapped(void *addr) {
   int found = 0;
   int rc;
 
-#if KMP_OS_LINUX || KMP_OS_FREEBSD
+#if KMP_OS_LINUX || KMP_OS_FREEBSD || KMP_OS_HURD
 
-  /* On Linux* OS, read the /proc/<pid>/maps pseudo-file to get all the address
+  /* On GNUish OSes, read the /proc/<pid>/maps pseudo-file to get all the address
      ranges mapped into the address space. */
 
   char *name = __kmp_str_format("/proc/%d/maps", getpid());
@@ -1971,7 +1973,7 @@ int __kmp_is_address_mapped(void *addr) {
     rc = fscanf(file, "%p-%p %4s %*[^\n]\n", &beginning, &ending, perms);
     if (rc == EOF) {
       break;
-    }; // if
+    }
     KMP_ASSERT(rc == 3 &&
                KMP_STRLEN(perms) == 4); // Make sure all fields are read.
 
@@ -1981,11 +1983,10 @@ int __kmp_is_address_mapped(void *addr) {
       if (strcmp(perms, "rw") == 0) {
         // Memory we are looking for should be readable and writable.
         found = 1;
-      }; // if
+      }
       break;
-    }; // if
-
-  }; // forever
+    }
+  }
 
   // Free resources.
   fclose(file);
@@ -2008,11 +2009,41 @@ int __kmp_is_address_mapped(void *addr) {
   if (rc == 0) {
     // Memory successfully read.
     found = 1;
-  }; // if
+  }
 
-#elif KMP_OS_FREEBSD || KMP_OS_NETBSD
+#elif KMP_OS_NETBSD
 
-  // FIXME(FreeBSD, NetBSD): Implement this
+  int mib[5];
+  mib[0] = CTL_VM;
+  mib[1] = VM_PROC;
+  mib[2] = VM_PROC_MAP;
+  mib[3] = getpid();
+  mib[4] = sizeof(struct kinfo_vmentry);
+
+  size_t size;
+  rc = sysctl(mib, __arraycount(mib), NULL, &size, NULL, 0);
+  KMP_ASSERT(!rc);
+  KMP_ASSERT(size);
+
+  size = size * 4 / 3;
+  struct kinfo_vmentry *kiv = (struct kinfo_vmentry *)KMP_INTERNAL_MALLOC(size);
+  KMP_ASSERT(kiv);
+
+  rc = sysctl(mib, __arraycount(mib), kiv, &size, NULL, 0);
+  KMP_ASSERT(!rc);
+  KMP_ASSERT(size);
+
+  for (size_t i = 0; i < size; i++) {
+    if (kiv[i].kve_start >= (uint64_t)addr &&
+        kiv[i].kve_end <= (uint64_t)addr) {
+      found = 1;
+      break;
+    }
+  }
+  KMP_INTERNAL_FREE(kiv);
+#elif KMP_OS_DRAGONFLY || KMP_OS_OPENBSD
+
+  // FIXME(DragonFly, OpenBSD): Implement this
   found = 1;
 
 #else
@@ -2027,7 +2058,7 @@ int __kmp_is_address_mapped(void *addr) {
 
 #ifdef USE_LOAD_BALANCE
 
-#if KMP_OS_DARWIN
+#if KMP_OS_DARWIN || KMP_OS_NETBSD
 
 // The function returns the rounded value of the system load average
 // during given time interval which depends on the value of
@@ -2106,11 +2137,11 @@ int __kmp_get_load_balance(int max) {
   if (permanent_error) {
     running_threads = -1;
     goto finish;
-  }; // if
+  }
 
   if (max <= 0) {
     max = INT_MAX;
-  }; // if
+  }
 
   // Open "/proc/" directory.
   proc_dir = opendir("/proc");
@@ -2120,7 +2151,7 @@ int __kmp_get_load_balance(int max) {
     running_threads = -1;
     permanent_error = 1;
     goto finish;
-  }; // if
+  }
 
   // Initialize fixed part of task_path. This part will not change.
   __kmp_str_buf_cat(&task_path, "/proc/", 6);
@@ -2161,7 +2192,7 @@ int __kmp_get_load_balance(int max) {
           running_threads = -1;
           permanent_error = 1;
           goto finish;
-        }; // if
+        }
       } else {
         // Construct fixed part of stat file path.
         __kmp_str_buf_clear(&stat_path);
@@ -2232,22 +2263,22 @@ int __kmp_get_load_balance(int max) {
                     ++running_threads;
                     if (running_threads >= max) {
                       goto finish;
-                    }; // if
-                  }; // if
-                }; // if
-              }; // if
+                    }
+                  }
+                }
+              }
               close(stat_file);
               stat_file = -1;
-            }; // if
-          }; // if
+            }
+          }
           task_entry = readdir(task_dir);
-        }; // while
+        }
         closedir(task_dir);
         task_dir = NULL;
-      }; // if
-    }; // if
+      }
+    }
     proc_entry = readdir(proc_dir);
-  }; // while
+  }
 
   // There _might_ be a timing hole where the thread executing this
   // code get skipped in the load balance, and running_threads is 0.
@@ -2260,15 +2291,15 @@ int __kmp_get_load_balance(int max) {
 finish: // Clean up and exit.
   if (proc_dir != NULL) {
     closedir(proc_dir);
-  }; // if
+  }
   __kmp_str_buf_free(&task_path);
   if (task_dir != NULL) {
     closedir(task_dir);
-  }; // if
+  }
   __kmp_str_buf_free(&stat_path);
   if (stat_file != -1) {
     close(stat_file);
-  }; // if
+  }
 
   glb_running_threads = running_threads;
 
@@ -2293,7 +2324,7 @@ int __kmp_invoke_microtask(microtask_t pkfn, int gtid, int tid, int argc,
 #endif
                            ) {
 #if OMPT_SUPPORT
-  *exit_frame_ptr = __builtin_frame_address(0);
+  *exit_frame_ptr = OMPT_GET_FRAME_ADDRESS(0);
 #endif
 
   switch (argc) {

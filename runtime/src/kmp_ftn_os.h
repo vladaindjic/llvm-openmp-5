@@ -2,16 +2,13 @@
  * kmp_ftn_os.h -- KPTS Fortran defines header file.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #ifndef KMP_FTN_OS_H
 #define KMP_FTN_OS_H
@@ -49,7 +46,7 @@
 #define FTN_ALIGNED_MALLOC kmp_aligned_malloc
 #define FTN_CALLOC kmp_calloc
 #define FTN_REALLOC kmp_realloc
-#define FTN_FREE kmp_free
+#define FTN_KFREE kmp_free
 
 #define FTN_GET_NUM_KNOWN_THREADS kmp_get_num_known_threads
 
@@ -102,9 +99,7 @@
 #define FTN_GET_WTICK omp_get_wtick
 
 #if OMP_40_ENABLED
-#if KMP_MIC || KMP_OS_DARWIN || defined(KMP_STUB)
 #define FTN_GET_NUM_DEVICES omp_get_num_devices
-#endif
 #define FTN_GET_DEFAULT_DEVICE omp_get_default_device
 #define FTN_SET_DEFAULT_DEVICE omp_set_default_device
 #define FTN_IS_INITIAL_DEVICE omp_is_initial_device
@@ -123,8 +118,8 @@
 #define FTN_GET_PLACE_NUM omp_get_place_num
 #define FTN_GET_PARTITION_NUM_PLACES omp_get_partition_num_places
 #define FTN_GET_PARTITION_PLACE_NUMS omp_get_partition_place_nums
-#ifdef KMP_STUB
 #define FTN_GET_INITIAL_DEVICE omp_get_initial_device
+#ifdef KMP_STUB
 #define FTN_TARGET_ALLOC omp_target_alloc
 #define FTN_TARGET_FREE omp_target_free
 #define FTN_TARGET_IS_PRESENT omp_target_is_present
@@ -133,6 +128,22 @@
 #define FTN_TARGET_ASSOCIATE_PTR omp_target_associate_ptr
 #define FTN_TARGET_DISASSOCIATE_PTR omp_target_disassociate_ptr
 #endif
+#endif
+
+#if OMP_50_ENABLED
+#define FTN_CONTROL_TOOL omp_control_tool
+#define FTN_INIT_ALLOCATOR omp_init_allocator
+#define FTN_DESTROY_ALLOCATOR omp_destroy_allocator
+#define FTN_SET_DEFAULT_ALLOCATOR omp_set_default_allocator
+#define FTN_GET_DEFAULT_ALLOCATOR omp_get_default_allocator
+#define FTN_GET_DEVICE_NUM omp_get_device_num
+#define FTN_SET_AFFINITY_FORMAT omp_set_affinity_format
+#define FTN_GET_AFFINITY_FORMAT omp_get_affinity_format
+#define FTN_DISPLAY_AFFINITY omp_display_affinity
+#define FTN_CAPTURE_AFFINITY omp_capture_affinity
+#define FTN_PAUSE_RESOURCE omp_pause_resource
+#define FTN_PAUSE_RESOURCE_ALL omp_pause_resource_all
+#define FTN_GET_SUPPORTED_ACTIVE_LEVELS omp_get_supported_active_levels
 #endif
 
 #endif /* KMP_FTN_PLAIN */
@@ -167,7 +178,7 @@
 #define FTN_ALIGNED_MALLOC kmp_aligned_malloc_
 #define FTN_CALLOC kmp_calloc_
 #define FTN_REALLOC kmp_realloc_
-#define FTN_FREE kmp_free_
+#define FTN_KFREE kmp_free_
 
 #define FTN_GET_NUM_KNOWN_THREADS kmp_get_num_known_threads_
 
@@ -220,14 +231,11 @@
 #define FTN_GET_WTICK omp_get_wtick_
 
 #if OMP_40_ENABLED
-#if KMP_MIC || KMP_OS_DARWIN || defined(KMP_STUB)
 #define FTN_GET_NUM_DEVICES omp_get_num_devices_
-#endif
 #define FTN_GET_DEFAULT_DEVICE omp_get_default_device_
 #define FTN_SET_DEFAULT_DEVICE omp_set_default_device_
 #define FTN_IS_INITIAL_DEVICE omp_is_initial_device_
 #endif
-
 
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION omp_get_cancellation_
@@ -242,8 +250,8 @@
 #define FTN_GET_PLACE_NUM omp_get_place_num_
 #define FTN_GET_PARTITION_NUM_PLACES omp_get_partition_num_places_
 #define FTN_GET_PARTITION_PLACE_NUMS omp_get_partition_place_nums_
-#ifdef KMP_STUB
 #define FTN_GET_INITIAL_DEVICE omp_get_initial_device_
+#ifdef KMP_STUB
 #define FTN_TARGET_ALLOC omp_target_alloc_
 #define FTN_TARGET_FREE omp_target_free_
 #define FTN_TARGET_IS_PRESENT omp_target_is_present_
@@ -252,6 +260,24 @@
 #define FTN_TARGET_ASSOCIATE_PTR omp_target_associate_ptr_
 #define FTN_TARGET_DISASSOCIATE_PTR omp_target_disassociate_ptr_
 #endif
+#endif
+
+#if OMP_50_ENABLED
+#define FTN_CONTROL_TOOL omp_control_tool_
+#define FTN_INIT_ALLOCATOR omp_init_allocator_
+#define FTN_DESTROY_ALLOCATOR omp_destroy_allocator_
+#define FTN_SET_DEFAULT_ALLOCATOR omp_set_default_allocator_
+#define FTN_GET_DEFAULT_ALLOCATOR omp_get_default_allocator_
+#define FTN_ALLOC omp_alloc_
+#define FTN_FREE omp_free_
+#define FTN_GET_DEVICE_NUM omp_get_device_num_
+#define FTN_SET_AFFINITY_FORMAT omp_set_affinity_format_
+#define FTN_GET_AFFINITY_FORMAT omp_get_affinity_format_
+#define FTN_DISPLAY_AFFINITY omp_display_affinity_
+#define FTN_CAPTURE_AFFINITY omp_capture_affinity_
+#define FTN_PAUSE_RESOURCE omp_pause_resource_
+#define FTN_PAUSE_RESOURCE_ALL omp_pause_resource_all_
+#define FTN_GET_SUPPORTED_ACTIVE_LEVELS omp_get_supported_active_levels_
 #endif
 
 #endif /* KMP_FTN_APPEND */
@@ -286,7 +312,7 @@
 #define FTN_ALIGNED_MALLOC KMP_ALIGNED_MALLOC
 #define FTN_CALLOC KMP_CALLOC
 #define FTN_REALLOC KMP_REALLOC
-#define FTN_FREE KMP_FREE
+#define FTN_KFREE KMP_FREE
 
 #define FTN_GET_NUM_KNOWN_THREADS KMP_GET_NUM_KNOWN_THREADS
 
@@ -339,14 +365,11 @@
 #define FTN_GET_WTICK OMP_GET_WTICK
 
 #if OMP_40_ENABLED
-#if KMP_MIC || KMP_OS_DARWIN || defined(KMP_STUB)
 #define FTN_GET_NUM_DEVICES OMP_GET_NUM_DEVICES
-#endif
 #define FTN_GET_DEFAULT_DEVICE OMP_GET_DEFAULT_DEVICE
 #define FTN_SET_DEFAULT_DEVICE OMP_SET_DEFAULT_DEVICE
 #define FTN_IS_INITIAL_DEVICE OMP_IS_INITIAL_DEVICE
 #endif
-
 
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION OMP_GET_CANCELLATION
@@ -361,8 +384,8 @@
 #define FTN_GET_PLACE_NUM OMP_GET_PLACE_NUM
 #define FTN_GET_PARTITION_NUM_PLACES OMP_GET_PARTITION_NUM_PLACES
 #define FTN_GET_PARTITION_PLACE_NUMS OMP_GET_PARTITION_PLACE_NUMS
-#ifdef KMP_STUB
 #define FTN_GET_INITIAL_DEVICE OMP_GET_INITIAL_DEVICE
+#ifdef KMP_STUB
 #define FTN_TARGET_ALLOC OMP_TARGET_ALLOC
 #define FTN_TARGET_FREE OMP_TARGET_FREE
 #define FTN_TARGET_IS_PRESENT OMP_TARGET_IS_PRESENT
@@ -371,6 +394,22 @@
 #define FTN_TARGET_ASSOCIATE_PTR OMP_TARGET_ASSOCIATE_PTR
 #define FTN_TARGET_DISASSOCIATE_PTR OMP_TARGET_DISASSOCIATE_PTR
 #endif
+#endif
+
+#if OMP_50_ENABLED
+#define FTN_CONTROL_TOOL OMP_CONTROL_TOOL
+#define FTN_INIT_ALLOCATOR OMP_INIT_ALLOCATOR
+#define FTN_DESTROY_ALLOCATOR OMP_DESTROY_ALLOCATOR
+#define FTN_SET_DEFAULT_ALLOCATOR OMP_SET_DEFAULT_ALLOCATOR
+#define FTN_GET_DEFAULT_ALLOCATOR OMP_GET_DEFAULT_ALLOCATOR
+#define FTN_GET_DEVICE_NUM OMP_GET_DEVICE_NUM
+#define FTN_SET_AFFINITY_FORMAT OMP_SET_AFFINITY_FORMAT
+#define FTN_GET_AFFINITY_FORMAT OMP_GET_AFFINITY_FORMAT
+#define FTN_DISPLAY_AFFINITY OMP_DISPLAY_AFFINITY
+#define FTN_CAPTURE_AFFINITY OMP_CAPTURE_AFFINITY
+#define FTN_PAUSE_RESOURCE OMP_PAUSE_RESOURCE
+#define FTN_PAUSE_RESOURCE_ALL OMP_PAUSE_RESOURCE_ALL
+#define FTN_GET_SUPPORTED_ACTIVE_LEVELS OMP_GET_SUPPORTED_ACTIVE_LEVELS
 #endif
 
 #endif /* KMP_FTN_UPPER */
@@ -405,7 +444,7 @@
 #define FTN_ALIGNED_MALLOC KMP_ALIGNED_MALLOC_
 #define FTN_CALLOC KMP_CALLOC_
 #define FTN_REALLOC KMP_REALLOC_
-#define FTN_FREE KMP_FREE_
+#define FTN_KFREE KMP_FREE_
 
 #define FTN_GET_NUM_KNOWN_THREADS KMP_GET_NUM_KNOWN_THREADS_
 
@@ -458,14 +497,11 @@
 #define FTN_GET_WTICK OMP_GET_WTICK_
 
 #if OMP_40_ENABLED
-#if KMP_MIC || KMP_OS_DARWIN || defined(KMP_STUB)
 #define FTN_GET_NUM_DEVICES OMP_GET_NUM_DEVICES_
-#endif
 #define FTN_GET_DEFAULT_DEVICE OMP_GET_DEFAULT_DEVICE_
 #define FTN_SET_DEFAULT_DEVICE OMP_SET_DEFAULT_DEVICE_
 #define FTN_IS_INITIAL_DEVICE OMP_IS_INITIAL_DEVICE_
 #endif
-
 
 #if OMP_40_ENABLED
 #define FTN_GET_CANCELLATION OMP_GET_CANCELLATION_
@@ -480,8 +516,8 @@
 #define FTN_GET_PLACE_NUM OMP_GET_PLACE_NUM_
 #define FTN_GET_PARTITION_NUM_PLACES OMP_GET_PARTITION_NUM_PLACES_
 #define FTN_GET_PARTITION_PLACE_NUMS OMP_GET_PARTITION_PLACE_NUMS_
-#ifdef KMP_STUB
 #define FTN_GET_INITIAL_DEVICE OMP_GET_INITIAL_DEVICE_
+#ifdef KMP_STUB
 #define FTN_TARGET_ALLOC OMP_TARGET_ALLOC_
 #define FTN_TARGET_FREE OMP_TARGET_FREE_
 #define FTN_TARGET_IS_PRESENT OMP_TARGET_IS_PRESENT_
@@ -490,6 +526,24 @@
 #define FTN_TARGET_ASSOCIATE_PTR OMP_TARGET_ASSOCIATE_PTR_
 #define FTN_TARGET_DISASSOCIATE_PTR OMP_TARGET_DISASSOCIATE_PTR_
 #endif
+#endif
+
+#if OMP_50_ENABLED
+#define FTN_CONTROL_TOOL OMP_CONTROL_TOOL_
+#define FTN_INIT_ALLOCATOR OMP_INIT_ALLOCATOR_
+#define FTN_DESTROY_ALLOCATOR OMP_DESTROY_ALLOCATOR_
+#define FTN_SET_DEFAULT_ALLOCATOR OMP_SET_DEFAULT_ALLOCATOR_
+#define FTN_GET_DEFAULT_ALLOCATOR OMP_GET_DEFAULT_ALLOCATOR_
+#define FTN_ALLOC OMP_ALLOC_
+#define FTN_FREE OMP_FREE_
+#define FTN_GET_DEVICE_NUM OMP_GET_DEVICE_NUM_
+#define FTN_SET_AFFINITY_FORMAT OMP_SET_AFFINITY_FORMAT_
+#define FTN_GET_AFFINITY_FORMAT OMP_GET_AFFINITY_FORMAT_
+#define FTN_DISPLAY_AFFINITY OMP_DISPLAY_AFFINITY_
+#define FTN_CAPTURE_AFFINITY OMP_CAPTURE_AFFINITY_
+#define FTN_PAUSE_RESOURCE OMP_PAUSE_RESOURCE_
+#define FTN_PAUSE_RESOURCE_ALL OMP_PAUSE_RESOURCE_ALL_
+#define FTN_GET_SUPPORTED_ACTIVE_LEVELS OMP_GET_SUPPORTED_ACTIVE_LEVELS_
 #endif
 
 #endif /* KMP_FTN_UAPPEND */
@@ -580,8 +634,6 @@
 #define KMP_API_NAME_GOMP_TASKYIELD GOMP_taskyield
 
 // All GOMP_4.0 symbols
-// TODO: As of 2013-10-14, none of the GOMP_4.0 functions are implemented in
-// libomp
 #define KMP_API_NAME_GOMP_BARRIER_CANCEL GOMP_barrier_cancel
 #define KMP_API_NAME_GOMP_CANCEL GOMP_cancel
 #define KMP_API_NAME_GOMP_CANCELLATION_POINT GOMP_cancellation_point
@@ -602,43 +654,28 @@
 #define KMP_API_NAME_GOMP_TARGET_UPDATE GOMP_target_update
 #define KMP_API_NAME_GOMP_TEAMS GOMP_teams
 
-#ifdef KMP_USE_VERSION_SYMBOLS
-#define xstr(x) str(x)
-#define str(x) #x
-
-// If Linux, xexpand prepends __kmp_api_ to the real API name
-#define xexpand(api_name) expand(api_name)
-#define expand(api_name) __kmp_api_##api_name
-
-#define xaliasify(api_name, ver) aliasify(api_name, ver)
-#define aliasify(api_name, ver)                                                \
-  __typeof__(__kmp_api_##api_name) __kmp_api_##api_name##_##ver##_alias        \
-      __attribute__((alias(xstr(__kmp_api_##api_name))))
-
-#define xversionify(api_name, version_num, version_str)                        \
-  versionify(api_name, version_num, version_str, "VERSION")
-#define versionify(api_name, version_num, version_str, default_ver)            \
-  __asm__(                                                                     \
-      ".symver " xstr(__kmp_api_##api_name##_##version_num##_alias) "," xstr(  \
-          api_name) "@" version_str "\n\t");                                   \
-  __asm__(".symver " xstr(__kmp_api_##api_name) "," xstr(                      \
-      api_name) "@@" default_ver "\n\t")
-
-#else // KMP_USE_VERSION_SYMBOLS
-#define xstr(x) /* Nothing */
-#define str(x) /* Nothing */
-
-// if Windows or Mac, xexpand does no name transformation
-#define xexpand(api_name) expand(api_name)
-#define expand(api_name) api_name
-
-#define xaliasify(api_name, ver) /* Nothing */
-#define aliasify(api_name, ver) /* Nothing */
-
-#define xversionify(api_name, version_num, version_str) /* Nothing */
-#define versionify(api_name, version_num, version_str,                         \
-                   default_ver) /* Nothing */
-
-#endif // KMP_USE_VERSION_SYMBOLS
+// All GOMP_4.5 symbols
+#define KMP_API_NAME_GOMP_TASKLOOP GOMP_taskloop
+#define KMP_API_NAME_GOMP_TASKLOOP_ULL GOMP_taskloop_ull
+#define KMP_API_NAME_GOMP_DOACROSS_POST GOMP_doacross_post
+#define KMP_API_NAME_GOMP_DOACROSS_WAIT GOMP_doacross_wait
+#define KMP_API_NAME_GOMP_LOOP_DOACROSS_STATIC_START                           \
+  GOMP_loop_doacross_static_start
+#define KMP_API_NAME_GOMP_LOOP_DOACROSS_DYNAMIC_START                          \
+  GOMP_loop_doacross_dynamic_start
+#define KMP_API_NAME_GOMP_LOOP_DOACROSS_GUIDED_START                           \
+  GOMP_loop_doacross_guided_start
+#define KMP_API_NAME_GOMP_LOOP_DOACROSS_RUNTIME_START                          \
+  GOMP_loop_doacross_runtime_start
+#define KMP_API_NAME_GOMP_DOACROSS_ULL_POST GOMP_doacross_ull_post
+#define KMP_API_NAME_GOMP_DOACROSS_ULL_WAIT GOMP_doacross_ull_wait
+#define KMP_API_NAME_GOMP_LOOP_ULL_DOACROSS_STATIC_START                       \
+  GOMP_loop_ull_doacross_static_start
+#define KMP_API_NAME_GOMP_LOOP_ULL_DOACROSS_DYNAMIC_START                      \
+  GOMP_loop_ull_doacross_dynamic_start
+#define KMP_API_NAME_GOMP_LOOP_ULL_DOACROSS_GUIDED_START                       \
+  GOMP_loop_ull_doacross_guided_start
+#define KMP_API_NAME_GOMP_LOOP_ULL_DOACROSS_RUNTIME_START                      \
+  GOMP_loop_ull_doacross_runtime_start
 
 #endif /* KMP_FTN_OS_H */

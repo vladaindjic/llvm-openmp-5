@@ -2,16 +2,13 @@
  * kmp_utility.cpp -- Utility routines for the OpenMP support library.
  */
 
-
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
 
 #include "kmp.h"
 #include "kmp_i18n.h"
@@ -98,14 +95,13 @@ static kmp_uint64 __kmp_parse_frequency( // R: Frequency in Hz.
     ) {
 
   double value = 0.0;
-  char const *unit = NULL;
+  char *unit = NULL;
   kmp_uint64 result = 0; /* Zero is a better unknown value than all ones. */
 
   if (frequency == NULL) {
     return result;
-  }; // if
-  value = strtod(frequency,
-                 CCAST(char **, &unit)); // strtod() does not like "const"
+  }
+  value = strtod(frequency, &unit);
   if (0 < value &&
       value <= DBL_MAX) { // Good value (not overflow, underflow, etc).
     if (strcmp(unit, "MHz") == 0) {
@@ -116,12 +112,12 @@ static kmp_uint64 __kmp_parse_frequency( // R: Frequency in Hz.
       value = value * 1.0E+12;
     } else { // Wrong unit.
       return result;
-    }; // if
+    }
     result = value;
-  }; // if
+  }
   return result;
 
-}; // func __kmp_parse_cpu_frequency
+} // func __kmp_parse_cpu_frequency
 
 void __kmp_query_cpuid(kmp_cpuinfo_t *p) {
   struct kmp_cpuid buf;
@@ -171,7 +167,7 @@ void __kmp_query_cpuid(kmp_cpuinfo_t *p) {
 
     for (t = buf.ebx, i = 0; i < 4; t >>= 8, ++i) {
       data[i] = (t & 0xff);
-    }; // for
+    }
 
     p->sse2 = (buf.edx >> 26) & 1;
 
@@ -270,7 +266,7 @@ void __kmp_query_cpuid(kmp_cpuinfo_t *p) {
       KA_TRACE(trace_level, (" RTM"));
     }
 #endif
-  }; // if
+  }
 
   { // Parse CPU brand string for frequency, saving the string for later.
     int i;
@@ -279,7 +275,7 @@ void __kmp_query_cpuid(kmp_cpuinfo_t *p) {
     // Get CPU brand string.
     for (i = 0; i < 3; ++i) {
       __kmp_x86_cpuid(0x80000002 + i, 0, base + i);
-    }; // for
+    }
     p->name[sizeof(p->name) - 1] = 0; // Just in case. ;-)
     KA_TRACE(trace_level, ("cpu brand string: \"%s\"\n", &p->name[0]));
 
@@ -378,7 +374,11 @@ void __kmp_expand_file_name(char *result, size_t rlen, char *pattern) {
         case 'I':
         case 'i': {
           pid_t id = getpid();
+#if KMP_ARCH_X86_64 && defined(__MINGW32__)
+          snp_result = KMP_SNPRINTF(pos, end - pos + 1, "%0*lld", width, id);
+#else
           snp_result = KMP_SNPRINTF(pos, end - pos + 1, "%0*d", width, id);
+#endif
           if (snp_result >= 0 && snp_result <= end - pos) {
             while (*pos)
               ++pos;

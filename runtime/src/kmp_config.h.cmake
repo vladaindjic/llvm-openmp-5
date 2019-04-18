@@ -3,10 +3,9 @@
  */
 //===----------------------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is dual licensed under the MIT and the University of Illinois Open
-// Source Licenses. See LICENSE.txt for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 #ifndef KMP_CONFIG_H
@@ -45,10 +44,8 @@
 #define OMPT_DEBUG LIBOMP_OMPT_DEBUG
 #cmakedefine01 LIBOMP_OMPT_SUPPORT
 #define OMPT_SUPPORT LIBOMP_OMPT_SUPPORT
-#cmakedefine01 LIBOMP_OMPT_BLAME
-#define OMPT_BLAME LIBOMP_OMPT_BLAME
-#cmakedefine01 LIBOMP_OMPT_TRACE
-#define OMPT_TRACE LIBOMP_OMPT_TRACE
+#cmakedefine01 LIBOMP_OMPT_OPTIONAL
+#define OMPT_OPTIONAL LIBOMP_OMPT_OPTIONAL
 #cmakedefine01 LIBOMP_USE_ADAPTIVE_LOCKS
 #define KMP_USE_ADAPTIVE_LOCKS LIBOMP_USE_ADAPTIVE_LOCKS
 #define KMP_DEBUG_ADAPTIVE_LOCKS 0
@@ -56,9 +53,13 @@
 #define KMP_USE_INTERNODE_ALIGNMENT LIBOMP_USE_INTERNODE_ALIGNMENT
 #cmakedefine01 LIBOMP_ENABLE_ASSERTIONS
 #define KMP_USE_ASSERT LIBOMP_ENABLE_ASSERTIONS
+#cmakedefine01 LIBOMP_USE_HIER_SCHED
+#define KMP_USE_HIER_SCHED LIBOMP_USE_HIER_SCHED
 #cmakedefine01 STUBS_LIBRARY
 #cmakedefine01 LIBOMP_USE_HWLOC
 #define KMP_USE_HWLOC LIBOMP_USE_HWLOC
+#cmakedefine01 LIBOMP_ENABLE_SHARED
+#define KMP_DYNAMIC_LIB LIBOMP_ENABLE_SHARED
 #define KMP_ARCH_STR "@LIBOMP_LEGAL_ARCH@"
 #define KMP_LIBRARY_FILE "@LIBOMP_LIB_FILE@"
 #define KMP_VERSION_MAJOR @LIBOMP_VERSION_MAJOR@
@@ -72,6 +73,8 @@
 #if LIBOMP_TSAN_SUPPORT
 #define TSAN_SUPPORT
 #endif
+#cmakedefine01 MSVC
+#define KMP_MSVC_COMPAT MSVC
 
 // Configured cache line based on architecture
 #if KMP_ARCH_PPC64
@@ -84,7 +87,6 @@
 # define BUILD_I8 1
 #endif
 
-#define KMP_DYNAMIC_LIB 1
 #define KMP_NESTED_HOT_TEAMS 1
 #define KMP_ADJUST_BLOCKTIME 1
 #define BUILD_PARALLEL_ORDERED 1

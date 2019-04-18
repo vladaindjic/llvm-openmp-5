@@ -1,7 +1,12 @@
 // RUN: %libomp-compile-and-run
 // RUN: %libomp-compile && env KMP_TASKLOOP_MIN_TASKS=1 %libomp-run
-// UNSUPPORTED: gcc
-// We do not yet have the GOMP interface for taskloop
+// REQUIRES: openmp-4.5
+
+// These compilers don't support the taskloop construct
+// UNSUPPORTED: gcc-4, gcc-5, icc-16
+// GCC 6 has support for taskloops, but at least 6.3.0 is crashing on this test
+// UNSUPPORTED: gcc-6
+
 /*
  * Test for taskloop
  * Method: caculate how many times the iteration space is dispatched
@@ -17,7 +22,8 @@
 
 int test_omp_taskloop_grainsize()
 {
-  int i, grainsize, count, tmp_count, result, num_off;
+  int result = 0;
+  int i, grainsize, count, tmp_count, num_off;
   int *tmp, *tids, *tidsArray;
 
   tidsArray = (int *)malloc(sizeof(int) * CFDMAX_SIZE);
