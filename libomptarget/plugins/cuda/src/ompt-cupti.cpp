@@ -99,7 +99,7 @@ typedef enum {
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
 
 
-#define ompt_ptr_unknown ((void *) ompt_value_unknown)
+#define ompt_ptr_unknown ((void *) 0)
 
 
 
@@ -205,7 +205,7 @@ static std::atomic<uint64_t> cupti_correlation_count;
 //----------------------------------------
 
 thread_local ompt_record_abstract_t ompt_record_abstract;
-thread_local ompt_target_id_t ompt_correlation_id;
+thread_local ompt_id_t ompt_correlation_id;
 
 thread_local int   code_device_global_id;
 thread_local int   code_device_relative_id;
@@ -309,12 +309,10 @@ ompt_device_get_type
 }
 
 
-
 static void
 ompt_device_rtl_init
 (
- ompt_function_lookup_t lookup, 
- ompt_fns_t *fns
+ ompt_function_lookup_t lookup
 )
 {
   DP("enter ompt_device_rtl_init\n");
@@ -341,7 +339,6 @@ ompt_device_rtl_init
 static void
 ompt_device_rtl_fini
 (
- ompt_fns_t *fns
 )
 {
   ompt_fini();
@@ -388,8 +385,8 @@ ompt_abstract_init()
   ompt_record_abstract_t *a = &ompt_record_abstract;
   a->rclass = ompt_record_native_event;
   a->hwid = ompt_hwid_none;
-  a->start_time = ompt_device_time_none;
-  a->end_time = ompt_device_time_none;
+  a->start_time = 0;
+  a->end_time = 0;
   return a;
 }
 
@@ -419,7 +416,7 @@ ompt_advance_buffer_cursor
 }
 
 
-static ompt_record_type_t 
+static ompt_record_t
 ompt_get_record_type
 (
   ompt_buffer_t *buffer,
@@ -438,7 +435,7 @@ ompt_get_record_native
 (
  ompt_buffer_t *buffer,
  ompt_buffer_cursor_t current,
- ompt_target_id_t *host_opid
+ ompt_id_t *host_opid
 )
 {
   DECLARE_CAST(CUpti_Activity, activity, current);
@@ -657,8 +654,8 @@ ompt_device_load
      module_id, cubin, cubin_size); 
   if (ompt_callback_device_load_fn) {
     ompt_callback_device_load_fn
-      (code_device_global_id, code_path, ompt_value_unknown, code_host_addr, cubin_size, 
-       cubin, ompt_ptr_unknown, module_id);
+      (code_device_global_id, code_path, 0, code_host_addr, cubin_size, 
+       (void *)cubin, NULL, module_id);
   }
 }
 
@@ -885,7 +882,7 @@ __attribute__ (( weak ))
 void
 libomptarget_rtl_ompt_init
 (
- ompt_fns_t *fns
+ ompt_start_tool_result_t *result
 )
 {
   // no initialization of OMPT for device-specific rtl unless 
@@ -928,6 +925,7 @@ ompt_binary_unload
   code_host_addr = host_addr;
 }
 
+typedef void (*libomptarget_rtl_ompt_init_t) (ompt_start_tool_result_t *result);
 
 void
 ompt_init
@@ -935,20 +933,20 @@ ompt_init
  int num_devices
 )
 {
-  static ompt_fns_t cuda_rtl_fns;
+  static ompt_start_tool_result_t cuda_rtl_result;
 
   DP("enter cuda_ompt_init\n");
 
   if (ompt_initialized == false) {
     void *vptr = dlsym(NULL, "libomptarget_rtl_ompt_init");
-    ompt_finalize_t libomptarget_rtl_ompt_init = 
-      reinterpret_cast<ompt_finalize_t>(reinterpret_cast<long>(vptr));
+    libomptarget_rtl_ompt_init_t libomptarget_rtl_ompt_init = 
+      reinterpret_cast<libomptarget_rtl_ompt_init_t>(reinterpret_cast<long>(vptr));
 
     if (libomptarget_rtl_ompt_init) {
-      cuda_rtl_fns.initialize = ompt_device_rtl_init;
-      cuda_rtl_fns.finalize =   ompt_device_rtl_fini;
+      cuda_rtl_result.initialize = ompt_device_rtl_init;
+      cuda_rtl_result.finalize   = ompt_device_rtl_fini;
 
-      libomptarget_rtl_ompt_init(&cuda_rtl_fns);
+      libomptarget_rtl_ompt_init(&cuda_rtl_result);
     }
     ompt_device_infos_alloc(num_devices);
     ompt_initialized = true;

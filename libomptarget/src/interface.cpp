@@ -103,7 +103,7 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
     return;
   }
 
-  OmptCallback ompt_callback(__builtin_return_address(0));
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
   ompt_callback.target_region_begin();
   ompt_callback.target_enter_data(device_id);
 
@@ -172,7 +172,7 @@ EXTERN void __tgt_target_data_end(int64_t device_id, int32_t arg_num,
   }
 #endif
 
-  OmptCallback ompt_callback(__builtin_return_address(0));
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
   ompt_callback.target_region_begin();
   ompt_callback.target_exit_data(device_id);
 
@@ -210,7 +210,7 @@ EXTERN void __tgt_target_data_update(int64_t device_id, int32_t arg_num,
     return;
   }
 
-  OmptCallbackInfo ompt_callback(__builtin_return_address(0));
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
   ompt_callback.target_region_begin();
   ompt_callback.target_update(device_id);
 
@@ -249,7 +249,7 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
     return OFFLOAD_FAIL;
   }
 
-  OmptCallback ompt_callback(__builtin_return_address(0));
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
   ompt_callback.target_region_begin();
   ompt_callback.target(device_id);
 
@@ -298,7 +298,7 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
     return OFFLOAD_FAIL;
   }
 
-  OmptCallback ompt_callback(__builtin_return_address(0));
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
   ompt_callback.target_region_begin();
   ompt_callback.target(device_id);
 

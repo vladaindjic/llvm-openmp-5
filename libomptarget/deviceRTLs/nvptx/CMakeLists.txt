@@ -79,7 +79,7 @@ if(LIBOMPTARGET_DEP_CUDA_FOUND)
     set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=-1 -g --ptxas-options=-v -lineinfo)
   endif()
 
-  if(LIBOMPTARGET_NVPTX_LINEINFO)
+  if(${LIBOMPTARGET_NVPTX_LINEINFO})
     set(CUDA_DEBUG -DOMPTARGET_NVPTX_DEBUG=0 -g --ptxas-options=-v -lineinfo -O2)
   endif()
 

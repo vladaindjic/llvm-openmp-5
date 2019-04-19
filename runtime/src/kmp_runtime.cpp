@@ -1782,7 +1782,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 
       __kmpc_serialized_parallel(loc, gtid);
 
-      if (microtask_context == microtask_context_intel) {
+      if (call_context == fork_context_intel) {
         /* TODO this sucks, use the compiler itself to pass args! :) */
         master_th->th.th_serial_team->t.t_ident = loc;
 #if OMP_40_ENABLED
@@ -1975,7 +1975,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
         KA_TRACE(20, ("__kmp_fork_call: T#%d serial exit\n", gtid));
         return FALSE;
       } else {
-        KMP_ASSERT2(microtask_context < microtask_context_last,
+        KMP_ASSERT2(call_context < fork_context_last,
                     "__kmp_fork_call: unknown microtask_context parameter");
       }
 
@@ -2364,7 +2364,7 @@ static inline void __kmp_join_ompt(int gtid, kmp_info_t *thread,
 void __kmp_join_call(ident_t *loc, int gtid
 #if OMPT_SUPPORT
                      ,
-                     enum microtask_context_e microtask_context
+                     enum fork_context_e fork_context
 #endif
 #if OMP_40_ENABLED
                      ,
@@ -7251,7 +7251,7 @@ void __kmp_teams_master(int gtid) {
   __kmp_join_call(loc, gtid
 #if OMPT_SUPPORT
                   ,
-                  microtask_context_intel
+                  fork_context_intel
 #endif
                   ,
                   1);

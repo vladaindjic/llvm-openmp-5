@@ -13,6 +13,7 @@
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
+#include "ompt_callback.h"
 
 #include <cassert>
 #include <cstdlib>

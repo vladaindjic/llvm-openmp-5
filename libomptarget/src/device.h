@@ -20,6 +20,8 @@
 #include <mutex>
 #include <vector>
 
+#include "omptarget.h"
+
 // Forward declarations.
 struct RTLInfoTy;
 struct __tgt_bin_desc;

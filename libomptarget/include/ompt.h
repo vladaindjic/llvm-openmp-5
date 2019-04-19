@@ -155,6 +155,7 @@
                                                                                                                          \
     macro (ompt_callback_dispatch,          ompt_callback_dispatch_t,          32) /* dispatch of work                */
 
+
 #define FOREACH_OMPT_TARGET_CALLBACK(macro) \
   macro(ompt_callback_device_initialize)    \
   macro(ompt_callback_device_finalize)      \

@@ -13,46 +13,50 @@
 #ifndef _OMPTARGET_CALLBACK_H
 #define _OMPTARGET_CALLBACK_H
 
+#if (__PPC64__ | __arm__)
+#define OMPT_GET_FRAME_ADDRESS(level) (*(void **)__builtin_frame_address(level))
+#else
+#define OMPT_GET_FRAME_ADDRESS(level) __builtin_frame_address(level)
+#endif
+
+#include <ompt.h>
+
 struct OmptCallback {
   void *_codeptr;
 
   explicit OmptCallback(void *codeptr_ra) : _codeptr(codeptr_ra) {}
 
   // target op callbacks
-  void target_data_alloc(void *TgtPtrBegin, size_t size);
+  void target_data_alloc(int64_t device_id, void *TgtPtrBegin, size_t Size);
 
-  void target_data_submit(void *HstPtrBegin, void *TgtPtrBegin, size_t size);
+  void target_data_submit(int64_t device_id, void *HstPtrBegin, void *TgtPtrBegin, size_t Size);
 
-  void target_data_delete(void *TgtPtrBegin); 
+  void target_data_delete(int64_t device_id, void *TgtPtrBegin); 
 
-  void target_data_retrieve(void *HstPtrBegin, void *TgtPtrBegin, size_t size); 
+  void target_data_retrieve(int64_t device_id, void *HstPtrBegin, void *TgtPtrBegin, size_t Size); 
 
   void target_submit();
 
   // target region callbacks
-  void target_enter_data();
+  void target_enter_data(int64_t device_id);
 
-  void target_exit_data();
+  void target_exit_data(int64_t device_id);
 
-  void target_update();
+  void target_update(int64_t device_id);
 
-  void target();
+  void target(int64_t device_id);
 
   // begin/end target region marks
-  void target_region_begin();
+  uint64_t target_region_begin();
   
-  void target_region_end();
+  uint64_t target_region_end();
 
   // begin/end target op marks
-  void OmptCallback::target_operation_begin();
+  void target_operation_begin();
 
-  void OmptCallback::target_operation_end();
+  void target_operation_end();
 }; 
 
 extern void ompt_init();
-
-extern void libomptarget_ompt_initialize(ompt_function_lookup_t lookup, ompt_fns_t *fns);
-
-extern void libomptarget_get_target_info(ompt_target_id_t *target_region_opid);
 
 #endif

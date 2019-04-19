@@ -13,7 +13,7 @@
 if (NOT(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64)|(ppc64le)$" AND CMAKE_SYSTEM_NAME MATCHES "Linux"))
   libomptarget_say("Not building CUDA offloading plugin: only support CUDA in Linux x86_64 or ppc64le hosts.")
   return()
-elseif(LIBOMPTARGET_DEP_LIBELF_FOUND)
+elseif(NOT LIBOMPTARGET_DEP_LIBELF_FOUND)
   libomptarget_say("Not building CUDA offloading plugin: libelf dependency not found.")
   return()
 elseif(NOT LIBOMPTARGET_DEP_CUDA_FOUND)
@@ -44,7 +44,7 @@ set(CUDA_SRCFILES
   src/rtl.cpp
   )
 
-add_library(omptarget.rtl.cuda SHARED $(CUDA_SRCFILES))
+add_library(omptarget.rtl.cuda SHARED ${CUDA_SRCFILES})
 
 # Install plugin under the lib destination folder.
 install(TARGETS omptarget.rtl.cuda LIBRARY DESTINATION "${OPENMP_INSTALL_LIBDIR}")

@@ -52,6 +52,8 @@ enum tgt_map_type {
 };
 
 enum OpenMPOffloadingDeclareTargetFlags {
+  /// Mark the entry as having a 'link' attribute.
+  OMP_DECLARE_TARGET_LINK = 0x01,
   /// Mark the entry as being a global constructor.
   OMP_DECLARE_TARGET_CTOR = 0x02,
   /// Mark the entry as being a global destructor.
