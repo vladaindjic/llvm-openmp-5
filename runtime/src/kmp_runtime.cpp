@@ -62,6 +62,10 @@ char const __kmp_version_lock[] =
     KMP_VERSION_PREFIX "lock type: run time selectable";
 #endif /* KMP_DEBUG */
 
+#if KMP_THREADPRIVATE_TLS
+void kmpc_threadprivate_call_unprocessed_constructors();
+#endif
+
 #define KMP_MIN(x, y) ((x) < (y) ? (x) : (y))
 
 /* ------------------------------------------------------------------------ */
@@ -1972,7 +1976,7 @@ int __kmp_fork_call(ident_t *loc, int gtid,
         return FALSE;
       } else {
         KMP_ASSERT2(call_context < fork_context_last,
-                    "__kmp_fork_call: unknown fork_context parameter");
+                    "__kmp_fork_call: unknown microtask_context parameter");
       }
 
       KA_TRACE(20, ("__kmp_fork_call: T#%d serial exit\n", gtid));

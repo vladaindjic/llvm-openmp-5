@@ -58,7 +58,7 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
   }
 
   DeviceTy &Device = Devices[device_num];
-  rc = Device.RTL->data_alloc(Device.RTLDeviceID, size, NULL);
+  rc = Device.data_alloc(size, NULL);
   DP("omp_target_alloc returns device ptr " DPxMOD "\n", DPxPTR(rc));
   return rc;
 }
@@ -84,7 +84,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
   }
 
   DeviceTy &Device = Devices[device_num];
-  Device.RTL->data_delete(Device.RTLDeviceID, (void *)device_ptr);
+  Device.data_delete((void *)device_ptr);
   DP("omp_target_free deallocated device ptr\n");
 }
 

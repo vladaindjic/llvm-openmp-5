@@ -16,6 +16,7 @@
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
+#include "ompt_callback.h"
 
 #include <cassert>
 #include <cstdlib>
@@ -102,6 +103,10 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
     return;
   }
 
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
+  ompt_callback.target_region_begin();
+  ompt_callback.target_enter_data(device_id);
+
   DeviceTy& Device = Devices[device_id];
 
 #ifdef OMPTARGET_DEBUG
@@ -115,6 +120,8 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
   int rc = target_data_begin(Device, arg_num, args_base,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
+
+  ompt_callback.target_region_end();
 }
 
 EXTERN void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
@@ -165,9 +172,15 @@ EXTERN void __tgt_target_data_end(int64_t device_id, int32_t arg_num,
   }
 #endif
 
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
+  ompt_callback.target_region_begin();
+  ompt_callback.target_exit_data(device_id);
+
   int rc = target_data_end(Device, arg_num, args_base,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
+
+  ompt_callback.target_region_end();
 }
 
 EXTERN void __tgt_target_data_end_nowait(int64_t device_id, int32_t arg_num,
@@ -197,10 +210,16 @@ EXTERN void __tgt_target_data_update(int64_t device_id, int32_t arg_num,
     return;
   }
 
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
+  ompt_callback.target_region_begin();
+  ompt_callback.target_update(device_id);
+
   DeviceTy& Device = Devices[device_id];
   int rc = target_data_update(Device, arg_num, args_base,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
+
+  ompt_callback.target_region_end();
 }
 
 EXTERN void __tgt_target_data_update_nowait(
@@ -230,6 +249,10 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
     return OFFLOAD_FAIL;
   }
 
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
+  ompt_callback.target_region_begin();
+  ompt_callback.target(device_id);
+
 #ifdef OMPTARGET_DEBUG
   for (int i=0; i<arg_num; ++i) {
     DP("Entry %2d: Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
@@ -241,6 +264,9 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
   int rc = target(device_id, host_ptr, arg_num, args_base, args, arg_sizes,
       arg_types, 0, 0, false /*team*/);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
+
+  ompt_callback.target_region_end();
+
   return rc;
 }
 
@@ -272,6 +298,10 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
     return OFFLOAD_FAIL;
   }
 
+  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
+  ompt_callback.target_region_begin();
+  ompt_callback.target(device_id);
+
 #ifdef OMPTARGET_DEBUG
   for (int i=0; i<arg_num; ++i) {
     DP("Entry %2d: Base=" DPxMOD ", Begin=" DPxMOD ", Size=%" PRId64
@@ -284,6 +314,7 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
       arg_types, team_num, thread_limit, true /*team*/);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
+  ompt_callback.target_region_end();
   return rc;
 }
 

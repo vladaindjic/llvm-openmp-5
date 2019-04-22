@@ -393,6 +393,8 @@ kmpc_set_defaults                           224
         __kmpc_taskloop                     266
         __kmpc_critical_with_hint           270
     %endif
+  __kmpc_reduce41                           261
+  __kmpc_end_reduce41                       262
 %endif
 kmpc_aligned_malloc                         265
 kmpc_set_disp_num_buffers                   267

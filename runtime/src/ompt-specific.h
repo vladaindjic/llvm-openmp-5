@@ -19,7 +19,10 @@
  * forward declarations
  ****************************************************************************/
 
+void __ompt_force_initialization();
+
 void __ompt_team_assign_id(kmp_team_t *team, ompt_data_t ompt_pid);
+
 void __ompt_thread_assign_wait_id(void *variable);
 
 void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
