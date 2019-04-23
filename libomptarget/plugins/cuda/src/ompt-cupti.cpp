@@ -309,10 +309,12 @@ ompt_device_get_type
 }
 
 
-static void
+static int
 ompt_device_rtl_init
 (
- ompt_function_lookup_t lookup
+ ompt_function_lookup_t lookup,
+ int initial_device_num,
+ ompt_data_t *tool_data
 )
 {
   DP("enter ompt_device_rtl_init\n");
@@ -333,12 +335,15 @@ ompt_device_rtl_init
 #undef ompt_bind_callback
   
   DP("exit ompt_device_rtl_init\n");
+
+  return 0;
 }
 
 
 static void
 ompt_device_rtl_fini
 (
+ ompt_data_t *tool_data
 )
 {
   ompt_fini();
