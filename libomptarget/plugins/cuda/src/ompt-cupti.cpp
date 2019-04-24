@@ -157,12 +157,7 @@ private:
   std::vector<ompt_device_info_t> *data;
 };
 
-typedef void (*libomptarget_get_target_info_t)(uint64_t *id);
-
 typedef std::map<int32_t, const char *> device_types_map_t; 
-
-typedef void (*ompt_target_start_tool_t) (ompt_initialize_t);
-
 
 
 //******************************************************************************
@@ -187,7 +182,7 @@ static const char *ompt_documentation =
 static bool ompt_enabled = false;
 static bool ompt_initialized = false;
 
-static libomptarget_get_target_info_t libomptarget_get_target_info;
+static ompt_get_target_info_t libomptarget_get_target_info;
 
 #define declare_name(name)			\
   static name ## _t name ## _fn = 0; 
@@ -322,7 +317,7 @@ ompt_device_rtl_init
   ompt_enabled = true;
 
   libomptarget_get_target_info = 
-    (libomptarget_get_target_info_t) lookup("libomptarget_get_target_info");
+    (ompt_get_target_info_t) lookup("libomptarget_get_target_info");
 
   DP("libomptarget_get_target_info = %p\n", fnptr_to_ptr(libomptarget_get_target_info));
 
