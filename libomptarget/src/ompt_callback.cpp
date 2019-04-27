@@ -256,7 +256,21 @@ static void libomptarget_ompt_finalize(ompt_data_t *data) {
   DP("exit libomptarget_ompt_finalize!\n");
 }
 
+
+static void
+libomptarget_get_target_info
+(
+  uint64_t *target_region_opid
+)
+{
+  *target_region_opid = ompt_target_region_opid;
+}
+
 static ompt_interface_fn_t libomptarget_rtl_fn_lookup(const char *fname) {
+
+  if (strcmp(fname, "libomptarget_get_target_info") == 0) 
+    return (ompt_interface_fn_t) libomptarget_get_target_info;
+
 #define lookup_libomp_fn(fn) \
   if (strcmp(fname, #fn) == 0) return (ompt_interface_fn_t) fn ## _fn;
 
