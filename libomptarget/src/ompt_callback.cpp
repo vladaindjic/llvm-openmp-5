@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cstring>
 #include <dlfcn.h>
+#include <assert.h>
 
 #include <ompt.h>
 #include "private.h"
@@ -26,10 +27,12 @@
 #define OMPT_CALLBACK(fn, args) if (ompt_enabled && fn) fn args
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
 
+
 /*******************************************************************************
  * class
  *******************************************************************************/
 
+#if 0
 class libomptarget_rtl_finalizer_t : std::list<ompt_finalize_t> {
 public:
   void register_rtl(ompt_finalize_t fn) {
@@ -42,6 +45,22 @@ public:
     }
   };
 };
+#else
+
+class libomptarget_rtl_finalizer_t : std::list<ompt_finalize_t> {
+public:
+  libomptarget_rtl_finalizer_t() : fn(0) {};
+  void register_rtl(ompt_finalize_t _fn) {
+    assert(fn == 0);
+    fn = _fn;
+  };
+
+  void finalize() {
+    if (fn) fn(NULL);
+  };
+  ompt_finalize_t fn;
+};
+#endif
 
 /*****************************************************************************
  * global data
@@ -242,6 +261,16 @@ static void libomptarget_ompt_finalize(ompt_data_t *data) {
   ompt_enabled = false;
 
   DP("exit libomptarget_ompt_finalize!\n");
+}
+
+
+static void
+libomptarget_get_target_info
+(
+  uint64_t *target_region_opid
+)
+{
+  *target_region_opid = ompt_target_region_opid;
 }
 
 static ompt_interface_fn_t libomptarget_rtl_fn_lookup(const char *fname) {

@@ -14,6 +14,8 @@
 #ifndef _OMPTARGET_H_
 #define _OMPTARGET_H_
 
+#define OMPTARGET_DEBUG
+
 #include <stdint.h>
 #include <stddef.h>
 

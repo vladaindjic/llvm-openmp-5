@@ -53,6 +53,7 @@ target_link_libraries(omptarget.rtl.cuda
   ${LIBOMPTARGET_DEP_CUDA_DRIVER_LIBRARIES}
   cuda 
   ${CUDA_TOOLKIT_ROOT_DIR}/extras/CUPTI/lib64/libcupti.so
+  ${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart.so
   ${LIBOMPTARGET_DEP_LIBELF_LIBRARIES}
   "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/../exports")
 
