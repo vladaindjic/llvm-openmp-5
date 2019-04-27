@@ -125,10 +125,12 @@ cupti_error_callback_dummy
 );
 
 
-static void 
+static int 
 cupti_correlation_callback_dummy
 (
- uint64_t *id
+ uint64_t *device_num,
+ uint64_t *target_id,
+ uint64_t *host_op_id
 );
 
 
@@ -376,7 +378,8 @@ cupti_subscriber_callback
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
         {
           uint64_t correlation_id;
-          DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
+          // TODO(Keren): for now, not care about region id and device num
+          DISPATCH_CALLBACK(cupti_correlation_callback, (NULL, NULL, &correlation_id));
 
           if (correlation_id != 0) {
             if (cb_info->callbackSite == CUPTI_API_ENTER) {
@@ -460,7 +463,9 @@ cupti_subscriber_callback
       #endif
       {
         uint64_t correlation_id;
-        DISPATCH_CALLBACK(cupti_correlation_callback, (&correlation_id));
+        // TODO(Keren): for now, not care about region id and device num
+        DISPATCH_CALLBACK(cupti_correlation_callback, (NULL, NULL, &correlation_id));
+
         if (correlation_id != 0) {
           if (cb_info->callbackSite == CUPTI_API_ENTER) {
             DP("Runtime push externalId %lu (cb_id = %u)\n", correlation_id, cb_id);
@@ -482,13 +487,15 @@ cupti_subscriber_callback
 }
 
 
-static void 
+static int 
 cupti_correlation_callback_dummy // __attribute__((unused))
 (
- uint64_t *id
+ uint64_t *device_num,
+ uint64_t *target_id,
+ uint64_t *host_op_id
 )
 {
-  *id = 0;
+  *host_op_id = 0;
 }
 
 

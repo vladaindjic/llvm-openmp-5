@@ -421,7 +421,7 @@ int32_t __tgt_rtl_init_device(int32_t device_id, int32_t omp_device_id) {
   ompt_device_init(device_id, omp_device_id, DeviceInfo.Contexts[device_id]);
 #ifdef OMPTARGET_DEBUG
 #if 0
-  // johnmc -- this debugging code doesn't compile
+  // this debugging code doesn't compile
   size_t printf_buffer_sz;
   cudaDeviceGetLimit(&printf_buffer_sz, cudaLimitPrintfFifoSize);
   DP("printf buffer limit %zu\n", printf_buffer_sz);

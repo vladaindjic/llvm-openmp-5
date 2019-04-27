@@ -27,9 +27,11 @@
 // types
 //******************************************************************************
 
-typedef void (*cupti_correlation_callback_t)
+typedef int (*cupti_correlation_callback_t)
 (
- uint64_t *id
+ uint64_t *device_num,
+ uint64_t *target_id,
+ uint64_t *host_op_id
 );
 
 

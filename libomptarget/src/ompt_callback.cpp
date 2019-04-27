@@ -25,7 +25,8 @@
  *******************************************************************************/
 
 #define OMPT_CALLBACK(fn, args) if (ompt_enabled && fn) fn args
-#define fnptr_to_ptr(fn) (void *) fn
+#define fnptr_to_ptr(x) ((void *) (uint64_t) x)
+
 
 /*******************************************************************************
  * class
@@ -219,6 +220,12 @@ void OmptCallback::target(int64_t device_id) {
  * OMPT interface operations
  *****************************************************************************/
 
+static void libomptarget_get_target_info(uint64_t *device_num,
+  ompt_id_t *target_id, ompt_id_t *host_op_id) {
+  *host_op_id = ompt_target_region_opid;
+}
+
+
 static int libomptarget_ompt_initialize(ompt_function_lookup_t lookup,
   int initial_device_num, ompt_data_t *tool_data) {
   DP("enter libomptarget_ompt_initialize!\n");
@@ -267,8 +274,7 @@ libomptarget_get_target_info
 }
 
 static ompt_interface_fn_t libomptarget_rtl_fn_lookup(const char *fname) {
-
-  if (strcmp(fname, "libomptarget_get_target_info") == 0) 
+  if (strcmp(fname, "libomptarget_get_target_info") == 0)
     return (ompt_interface_fn_t) libomptarget_get_target_info;
 
 #define lookup_libomp_fn(fn) \
