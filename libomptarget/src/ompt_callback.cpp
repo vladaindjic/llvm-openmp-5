@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cstring>
 #include <dlfcn.h>
+#include <assert.h>
 
 #include <ompt.h>
 #include "private.h"
@@ -29,6 +30,7 @@
  * class
  *******************************************************************************/
 
+#if 0
 class libomptarget_rtl_finalizer_t : std::list<ompt_finalize_t> {
 public:
   void register_rtl(ompt_finalize_t fn) {
@@ -41,6 +43,22 @@ public:
     }
   };
 };
+#else
+
+class libomptarget_rtl_finalizer_t : std::list<ompt_finalize_t> {
+public:
+  libomptarget_rtl_finalizer_t() : fn(0) {};
+  void register_rtl(ompt_finalize_t _fn) {
+    assert(fn == 0);
+    fn = _fn;
+  };
+
+  void finalize() {
+    if (fn) fn(NULL);
+  };
+  ompt_finalize_t fn;
+};
+#endif
 
 /*****************************************************************************
  * global data
