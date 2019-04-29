@@ -66,12 +66,13 @@ public:
  * global data
  *****************************************************************************/
 
+
 static bool ompt_enabled = false;
 
-typedef void (*ompt_set_frame_reenter_t)(void *);  
+typedef int (*ompt_set_frame_enter_t)(void *addr, int flags, int state);  
 typedef ompt_data_t *(*ompt_get_task_data_t)();  
 
-static ompt_set_frame_reenter_t ompt_set_frame_reenter_fn = 0;
+static ompt_set_frame_enter_t ompt_set_frame_enter_fn = 0;
 static ompt_get_task_data_t ompt_get_task_data_fn = 0;
 
 #define declare_name(name)			\
@@ -90,6 +91,8 @@ static libomptarget_rtl_finalizer_t libomptarget_rtl_finalizer;
  * Thread local data
  *****************************************************************************/
 
+thread_local OmptInterface ompt_interface = {0, 0, ompt_state_idle};
+
 static thread_local uint64_t ompt_target_region_id = 1;
 static thread_local uint64_t ompt_target_region_opid = 1;
 
@@ -100,119 +103,149 @@ static std::atomic<uint64_t> ompt_target_region_opid_ticket(1);
  * OMPT callbacks
  *****************************************************************************/
 
-uint64_t OmptCallback::target_region_begin() {
+void OmptInterface::ompt_state_set_helper
+(
+  void *enter_frame, 
+  void *codeptr_ra, 
+  int flags,
+  int state
+) 
+{
+  _enter_frame = enter_frame;
+  _codeptr_ra = codeptr_ra;
+  return;
+  if (ompt_set_frame_enter_fn) {
+    _state = ompt_set_frame_enter_fn(_enter_frame, flags, state);
+  }
+}
+
+void OmptInterface::ompt_state_set
+(
+  void *enter_frame, 
+  void *codeptr_ra
+) 
+{
+  if (ompt_enabled) {
+    ompt_state_set_helper(enter_frame, codeptr_ra, OMPT_FRAME_FLAGS,
+      ompt_state_work_parallel);
+  }
+}
+
+void OmptInterface::ompt_state_clear
+(
+  void
+) 
+{
+  if (ompt_enabled) ompt_state_set_helper(0,0,0,_state);
+}
+
+uint64_t OmptInterface::target_region_begin() {
   uint64_t retval = 0;
   if (ompt_enabled) {
     ompt_target_region_id = ompt_target_region_id_ticket.fetch_add(1);
     retval = ompt_target_region_id;
-    DP("in OmptCallback::target_region_begin (retval = %lu)\n", retval);
+    DP("in OmptInterface::target_region_begin (retval = %lu)\n", retval);
   } 
   return retval;
 }
 
-uint64_t OmptCallback::target_region_end() {
+uint64_t OmptInterface::target_region_end() {
   uint64_t retval = 0;
   if (ompt_enabled) {
     retval = ompt_target_region_id;
     ompt_target_region_id = 0;
-    DP("in OmptCallback::target_region_end (retval = %lu)\n", retval);
+    DP("in OmptInterface::target_region_end (retval = %lu)\n", retval);
   } 
   return retval;
 }
 
-void OmptCallback::target_operation_begin() {
+void OmptInterface::target_operation_begin() {
   if (ompt_enabled) {
     ompt_target_region_opid = ompt_target_region_opid_ticket.fetch_add(1);
-    if (ompt_set_frame_reenter_fn) {
-      ompt_set_frame_reenter_fn(_codeptr);
-    }
     DP("in ompt_target_region_begin (ompt_target_region_opid = %lu)\n", 
        ompt_target_region_opid);
   }
 }
 
-void OmptCallback::target_operation_end() {
+void OmptInterface::target_operation_end() {
   if (ompt_enabled) {
-    if (ompt_set_frame_reenter_fn) {
-      ompt_set_frame_reenter_fn(0);
-    }
     DP("in ompt_target_region_end (ompt_target_region_opid = %lu)\n", 
        ompt_target_region_opid);
   }
 }
 
-void OmptCallback::target_data_alloc(int64_t device_id, void *tgt_ptr_begin, size_t size) {
+void OmptInterface::target_data_alloc(int64_t device_id, void *tgt_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
     (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_alloc,
-     tgt_ptr_begin, device_id, NULL, 0, size, _codeptr));
+     tgt_ptr_begin, device_id, NULL, 0, size, _codeptr_ra));
 }
 
-void OmptCallback::target_data_submit(int64_t device_id, void *tgt_ptr_begin,
+void OmptInterface::target_data_submit(int64_t device_id, void *tgt_ptr_begin,
   void *hst_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
     (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_to_device,
-     hst_ptr_begin, 0, tgt_ptr_begin, device_id, size, _codeptr));
+     hst_ptr_begin, 0, tgt_ptr_begin, device_id, size, _codeptr_ra));
 }
 
-void OmptCallback::target_data_delete(int64_t device_id, void *tgt_ptr_begin) {
+void OmptInterface::target_data_delete(int64_t device_id, void *tgt_ptr_begin) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
     (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_delete,
-     tgt_ptr_begin, device_id, NULL, 0, 0, _codeptr));
+     tgt_ptr_begin, device_id, NULL, 0, 0, _codeptr_ra));
 }
 
-void OmptCallback::target_data_retrieve(int64_t device_id, void *hst_ptr_begin,
+void OmptInterface::target_data_retrieve(int64_t device_id, void *hst_ptr_begin,
   void *tgt_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn,
     (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_from_device,
-     tgt_ptr_begin, device_id, hst_ptr_begin, 0, size, _codeptr));
+     tgt_ptr_begin, device_id, hst_ptr_begin, 0, size, _codeptr_ra));
 } 
 
-void OmptCallback::target_submit() {
+void OmptInterface::target_submit() {
   OMPT_CALLBACK(ompt_callback_target_submit_fn, 
 		(ompt_target_region_id, ompt_target_region_opid, 0));
 }
 
-void OmptCallback::target_enter_data(int64_t device_id) {
+void OmptInterface::target_enter_data(int64_t device_id) {
   OMPT_CALLBACK(ompt_callback_target_fn, 
     (ompt_target_enter_data, 
      ompt_scope_begin,
      device_id,
      ompt_get_task_data_fn(), 
      ompt_target_region_id, 
-     _codeptr
+     _codeptr_ra
     )); 
 }
 
-void OmptCallback::target_exit_data(int64_t device_id) {
+void OmptInterface::target_exit_data(int64_t device_id) {
   OMPT_CALLBACK(ompt_callback_target_fn, 
     (ompt_target_exit_data, 
      ompt_scope_begin,
      device_id,
      ompt_get_task_data_fn(), 
      ompt_target_region_id, 
-     _codeptr
+     _codeptr_ra
     )); 
 }
 
-void OmptCallback::target_update(int64_t device_id) {
+void OmptInterface::target_update(int64_t device_id) {
   OMPT_CALLBACK(ompt_callback_target_fn, 
     (ompt_target_update, 
      ompt_scope_begin,
      device_id,
      ompt_get_task_data_fn(), 
      ompt_target_region_id, 
-     _codeptr
+     _codeptr_ra
     )); 
 }
 
-void OmptCallback::target(int64_t device_id) {
+void OmptInterface::target(int64_t device_id) {
   OMPT_CALLBACK(ompt_callback_target_fn, 
 	  (ompt_target, 
 	   ompt_scope_begin,
 	   device_id,
 	   ompt_get_task_data_fn(), 
 	   ompt_target_region_id, 
-     _codeptr
+           _codeptr_ra
 	   )); 
 }
 
@@ -235,7 +268,7 @@ static int libomptarget_ompt_initialize(ompt_function_lookup_t lookup,
 #define ompt_bind_name(fn) \
   fn ## _fn = (fn ## _t ) lookup(#fn); DP("%s=%p\n", #fn, fnptr_to_ptr(fn ## _fn));
 
-  ompt_bind_name(ompt_set_frame_reenter);	
+  ompt_bind_name(ompt_set_frame_enter);	
   ompt_bind_name(ompt_get_task_data);	
 
 #undef ompt_bind_name

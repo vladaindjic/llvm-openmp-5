@@ -740,11 +740,8 @@ static ompt_interface_fn_t ompt_fn_lookup(const char *s) {
   return (ompt_interface_fn_t)0;
 }
 
-static void ompt_set_frame_reenter(void *addr) {
-  ompt_frame_t *frame;
-  if (ompt_get_task_info(0, NULL, NULL, &frame, NULL, NULL)) {
-    frame->enter_frame.ptr = addr;
-  }
+static int ompt_set_frame_enter(void *addr, int flags, int state) {
+ return __ompt_set_frame_enter_internal(addr, flags, state);
 }
 
 static ompt_data_t * ompt_get_task_data() {
@@ -756,8 +753,8 @@ static ompt_data_t * ompt_get_task_data() {
 }
 
 static ompt_interface_fn_t libomp_target_fn_lookup(const char *s) {
-  if (strcmp(s, "ompt_set_frame_reenter") == 0) 
-    return (ompt_interface_fn_t) ompt_set_frame_reenter;
+  if (strcmp(s, "ompt_set_frame_enter") == 0) 
+    return (ompt_interface_fn_t) ompt_set_frame_enter;
 
   if (strcmp(s, "ompt_get_task_data") == 0) 
     return (ompt_interface_fn_t) ompt_get_task_data;
@@ -774,6 +771,7 @@ static ompt_interface_fn_t libomp_target_fn_lookup(const char *s) {
 }
 
 _OMP_EXTERN void libomp_libomptarget_ompt_init(ompt_start_tool_result_t *result) {
+  printf("libomp forcing initialization\n");
   __ompt_force_initialization();
 
   if (ompt_enabled.enabled && 

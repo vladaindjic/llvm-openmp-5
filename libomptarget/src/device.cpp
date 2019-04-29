@@ -313,11 +313,10 @@ __tgt_target_table *DeviceTy::load_binary(__tgt_device_image *Img) {
 // Allocate device memory
 void *DeviceTy::data_alloc(int64_t Size, void *HstPtrBegin) {
   DP("enter DeviceTy::data_alloc\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
+  ompt_interface.target_operation_begin();
   void *TgtPtrBegin = RTL->data_alloc(RTLDeviceID, Size, HstPtrBegin);
-  ompt_callback.target_data_alloc(DeviceID, TgtPtrBegin, Size);
-  ompt_callback.target_operation_end();
+  ompt_interface.target_data_alloc(DeviceID, TgtPtrBegin, Size);
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::data_alloc\n");
   return TgtPtrBegin;
 }
@@ -326,11 +325,10 @@ void *DeviceTy::data_alloc(int64_t Size, void *HstPtrBegin) {
 int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
     int64_t Size) {
   DP("enter DeviceTy::data_submit\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
-  ompt_callback.target_data_submit(DeviceID, TgtPtrBegin, HstPtrBegin, Size);
+  ompt_interface.target_operation_begin();
+  ompt_interface.target_data_submit(DeviceID, TgtPtrBegin, HstPtrBegin, Size);
   int32_t result = RTL->data_submit(RTLDeviceID, TgtPtrBegin, HstPtrBegin, Size); 
-  ompt_callback.target_operation_end();
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::data_submit\n");
   return result;
 }
@@ -338,11 +336,10 @@ int32_t DeviceTy::data_submit(void *TgtPtrBegin, void *HstPtrBegin,
 // Delete device data
 int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
   DP("enter DeviceTy::data_delete\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
+  ompt_interface.target_operation_begin();
   int32_t result = RTL->data_delete(RTLDeviceID, TgtPtrBegin);
-  ompt_callback.target_data_delete(DeviceID, TgtPtrBegin);
-  ompt_callback.target_operation_end();
+  ompt_interface.target_data_delete(DeviceID, TgtPtrBegin);
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::data_delete\n");
   return result;
 }
@@ -351,11 +348,10 @@ int32_t DeviceTy::data_delete(void *TgtPtrBegin) {
 int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
     int64_t Size) {
   DP("enter DeviceTy::data_retrieve\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
-  ompt_callback.target_data_retrieve(DeviceID, HstPtrBegin, TgtPtrBegin, Size);
+  ompt_interface.target_operation_begin();
+  ompt_interface.target_data_retrieve(DeviceID, HstPtrBegin, TgtPtrBegin, Size);
   int32_t result = RTL->data_retrieve(RTLDeviceID, HstPtrBegin, TgtPtrBegin, Size);
-  ompt_callback.target_operation_end();
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::data_retrieve\n");
   return result;
 }
@@ -364,12 +360,11 @@ int32_t DeviceTy::data_retrieve(void *HstPtrBegin, void *TgtPtrBegin,
 int32_t DeviceTy::run_region(void *TgtEntryPtr, void **TgtVarsPtr,
     ptrdiff_t *TgtOffsets, int32_t TgtVarsSize) {
   DP("enter DeviceTy::run_region\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
-  ompt_callback.target_submit();
+  ompt_interface.target_operation_begin();
+  ompt_interface.target_submit();
   int32_t result = RTL->run_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtOffsets,
       TgtVarsSize);
-  ompt_callback.target_operation_end();
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::run_region\n");
   return result;
 }
@@ -379,12 +374,11 @@ int32_t DeviceTy::run_team_region(void *TgtEntryPtr, void **TgtVarsPtr,
     ptrdiff_t *TgtOffsets, int32_t TgtVarsSize, int32_t NumTeams,
     int32_t ThreadLimit, uint64_t LoopTripCount) {
   DP("enter DeviceTy::run_team_region\n");
-  OmptCallback ompt_callback(OMPT_GET_FRAME_ADDRESS(0));
-  ompt_callback.target_operation_begin();
-  ompt_callback.target_submit();
+  ompt_interface.target_operation_begin();
+  ompt_interface.target_submit();
   int32_t result = RTL->run_team_region(RTLDeviceID, TgtEntryPtr, TgtVarsPtr, TgtOffsets,
       TgtVarsSize, NumTeams, ThreadLimit, LoopTripCount);
-  ompt_callback.target_operation_end();
+  ompt_interface.target_operation_end();
   DP("exit DeviceTy::run_team_region\n");
   return result;
 }

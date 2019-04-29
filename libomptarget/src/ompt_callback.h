@@ -15,16 +15,26 @@
 
 #if (__PPC64__ | __arm__)
 #define OMPT_GET_FRAME_ADDRESS(level) (*(void **)__builtin_frame_address(level))
+#define OMPT_FRAME_FLAGS (ompt_frame_runtime | ompt_frame_cfa)
 #else
 #define OMPT_GET_FRAME_ADDRESS(level) __builtin_frame_address(level)
+#define OMPT_FRAME_FLAGS (ompt_frame_runtime | ompt_frame_framepointer)
 #endif
+
+#define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
 
 #include <ompt.h>
 
-struct OmptCallback {
-  void *_codeptr;
+struct OmptInterface {
+  void *_enter_frame;
+  void *_codeptr_ra;
+  int _state;
 
-  explicit OmptCallback(void *codeptr_ra) : _codeptr(codeptr_ra) {}
+  void ompt_state_set_helper(void *enter_frame, void *codeptr_ra, int flags, int state);
+
+  void ompt_state_set(void *enter_frame, void *codeptr_ra);
+
+  void ompt_state_clear();
 
   // target op callbacks
   void target_data_alloc(int64_t device_id, void *TgtPtrBegin, size_t Size);
@@ -55,8 +65,12 @@ struct OmptCallback {
   void target_operation_begin();
 
   void target_operation_end();
+
 }; 
 
 extern void ompt_init();
+
+extern thread_local OmptInterface ompt_interface; 
+
 
 #endif
