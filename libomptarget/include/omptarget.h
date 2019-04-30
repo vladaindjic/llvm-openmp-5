@@ -14,7 +14,10 @@
 #ifndef _OMPTARGET_H_
 #define _OMPTARGET_H_
 
+// set to 1 for debug messages
+#if 0
 #define OMPTARGET_DEBUG
+#endif
 
 #include <stdint.h>
 #include <stddef.h>
