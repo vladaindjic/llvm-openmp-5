@@ -771,7 +771,6 @@ static ompt_interface_fn_t libomp_target_fn_lookup(const char *s) {
 }
 
 _OMP_EXTERN void libomp_libomptarget_ompt_init(ompt_start_tool_result_t *result) {
-  printf("libomp forcing initialization\n");
   __ompt_force_initialization();
 
   if (ompt_enabled.enabled && 
