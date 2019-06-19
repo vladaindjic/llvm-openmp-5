@@ -62,18 +62,15 @@ ompt_initialize
 
 	starttime = gethrtime();
 
-
 	// look up the runtime entry points
 	ompt_get_task_info_fn = (ompt_get_task_info_t) my_lookup("ompt_get_task_info");
 #ifndef NO_CALLBACKS
+	// look up two runtime entry points
 	ompt_set_callback_fn = (ompt_set_callback_t) lookup("ompt_set_callback");
 
 	// register callbacks to be notified about various events
 	register_callbacks();
 #endif
-
-	ompt_get_task_info_fn = (ompt_get_task_info_t) my_lookup("ompt_get_task_info");
-
 	return 1;
 }
 
