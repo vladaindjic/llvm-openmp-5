@@ -29,9 +29,6 @@ int main(int argc, char **argv)
 	// Set thread count; causes the initialization of the OMPT code
 	omp_set_num_threads(NUMTHREADS);
 
-	// look up the ompt_get_task_info address
-	ompt_get_task_info_fn = (ompt_get_task_info_t) my_lookup("ompt_get_task_info");
-
 	// test lock callbacks
 	lockcbtest();
 	(*delay_ptr)(10);
