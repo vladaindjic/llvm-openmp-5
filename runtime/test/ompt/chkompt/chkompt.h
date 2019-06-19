@@ -9,10 +9,12 @@
 // If TRACE_ALL is defined, all events are traced, whether an ERROR is detected or not.
 // If NO_TIMESTAMPS is defined, the trace will not have timestamps; otherwise it will.
 // If NO_CALLBACKS is defined, no callbacks will be set, so none will appear in the trace.
+// If NO_NONEST is defined, do not run the testtriple_nonest subtest
 
 #define TRACE_ALL
 // #define NO_TIMESTAMPS
 // #define NO_CALLBACKS
+// #define NO_NONEST
 
 #define RUN_SKEW 1
 #define NSKEW 1000000
@@ -28,18 +30,25 @@ void	testguided();
 void	testsections();
 void	testparallelsections();
 void	testtasks();
+void	testtriple_nest();
+void	testtriple_nonest();
+void	testtriple();
 void	reductiontest();
 void	lockcbtest();
 
 // Utility routines to validate the data and delay threads
 void	skew_delay(int);
-void	ck_ra(const char *, const void*, int);
+void	format_sync_type(ompt_sync_region_t, ompt_scope_endpoint_t endpoint, char *);
+void	format_work_type(ompt_work_t, ompt_scope_endpoint_t endpoint, char *);
+void	format_task_type(int, char *);
+void	format_lock_type(ompt_mutex_t, char *);
+void	ck_ra(const char *, const void*, int, char*);
 void	validate(const char *);
 void	delay(int);
 
 // pointers to those routines
 void	(*skew_delay_ptr)(int);
-void	(*ck_ra_ptr)(const char *, const void *);
+void	(*ck_ra_ptr)(const char *, const void *, char *);
 void	(*validate_ptr)(const char *);
 void	(*delay_ptr)(int);
 
