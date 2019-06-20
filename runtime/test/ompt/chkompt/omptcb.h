@@ -15,7 +15,7 @@ ompt_set_callback_t ompt_set_callback_fn;	// Address of routine to set callback
 ompt_get_task_info_t ompt_get_task_info_fn;	// Address of routine to get task information
 
 void (*validate_ptr)(const char *) = validate;
-void (*ck_ra_)(const char *, const void *, int, char*) = ck_ra;
+void (*ck_ra_)(const char *, int, const void *, int, char*) = ck_ra;
 
 int in_implicit_task = 0;
 hrtime_t	starttime;
@@ -266,7 +266,7 @@ ompt_implicit_task
 )
 {
 	// trace the callback
-	ck_ra("implicit_task_CB", (const void*)1, (int)index,
+	ck_ra("implicit_task_CB", 1, (const void*)1, (int)index,
 	    (endpoint == ompt_scope_begin ? "[begin] " : "[end] ") );
 	
 	if (endpoint == ompt_scope_begin)  {
@@ -305,7 +305,7 @@ ompt_thread_begin
 		ctype = "[unknown] ";
 		break;
 	}
-	ck_ra("thread_begin_CB", (const void*)1, (int)thread_type, ctype);
+	ck_ra("thread_begin_CB", 1, (const void*)1, (int)thread_type, ctype);
 }
 
 // ------------------------------------------------------------------------
@@ -317,7 +317,7 @@ ompt_thread_end
 	ompt_data_t *thread_data
 )
 {
-	ck_ra("thread_end_CB", (const void*)1, 0, NULL);
+	ck_ra("thread_end_CB", 1, (const void*)1, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -334,7 +334,7 @@ ompt_parallel_begin
 	const void *codeptr_ra
 )
 {
-	ck_ra("parallel_begin_CB", codeptr_ra, 0, NULL);
+	ck_ra("parallel_begin_CB", 0, codeptr_ra, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -349,7 +349,7 @@ ompt_parallel_end
 	const void *codeptr_ra
 )
 {
-	ck_ra("parallel_end_CB", codeptr_ra, 0, NULL);
+	ck_ra("parallel_end_CB", 0, codeptr_ra, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -371,12 +371,16 @@ ompt_task_create
 
 	format_task_type(flags, task_type);
 
+#if 0
 	is_initial = flags & ompt_task_initial;
 	if (!is_initial) {
-	    ck_ra("task_create_CB", codeptr_ra, 0, task_type);
+	    ck_ra("task_create_CB", 0, codeptr_ra, 0, task_type);
 	} else {
-	    ck_ra("task_create_CB", (const void *) 1, 0, task_type);
+	    ck_ra("task_create_CB", 3, codeptr_ra, 0, task_type);
 	}
+#else
+	ck_ra("task_create_CB", 0, codeptr_ra, 0, task_type);
+#endif
 }
 
 // ------------------------------------------------------------------------
@@ -400,7 +404,7 @@ ompt_task_schedule
 	ompt_data_t *new_task_data
 )
 {
-	ck_ra("task_schedule_CB", (const void *)1, 0, ompt_task_status_t_values[prior_task_status] );
+	ck_ra("task_schedule_CB", 1, (const void *)1, 0, ompt_task_status_t_values[prior_task_status] );
 }
 
 // ------------------------------------------------------------------------
@@ -416,7 +420,7 @@ ompt_targetcb(
 	const void *codeptr_ra
 )
 {
-	ck_ra("target_CB", codeptr_ra, device_num, NULL);
+	ck_ra("target_CB", 0, codeptr_ra, device_num, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -435,7 +439,7 @@ ompt_target_data_op(
 	const void *codeptr_ra
 )
 {
-	ck_ra("target data_op_CB", codeptr_ra, src_device_num, NULL);
+	ck_ra("target data_op_CB", 0, codeptr_ra, src_device_num, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -448,7 +452,7 @@ ompt_target_submit(
 	unsigned int requested_num_teams
 )
 {
-	ck_ra("target_submit_CB", (const void *)1, target_id, NULL);
+	ck_ra("target_submit_CB", 1, (const void *)1, target_id, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -467,7 +471,7 @@ ompt_work (
 	char buffer[128];
 	format_work_type(wstype, endpoint, buffer);
 
-	ck_ra("work_CB", codeptr_ra, (int)wstype, buffer);
+	ck_ra("work_CB", 0, codeptr_ra, (int)wstype, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -481,7 +485,7 @@ ompt_master (
         const void *codeptr_ra
 )
 {
-	ck_ra("master_CB", codeptr_ra, (int)endpoint, 
+	ck_ra("master_CB", 0, codeptr_ra, (int)endpoint, 
 	    (endpoint == ompt_scope_begin ? "[begin] " : "[end] ") );
 
 }
@@ -500,7 +504,7 @@ ompt_target_map (
         const void *codeptr_ra
 )
 {
-	ck_ra("target_map_CB", codeptr_ra, (int) id, NULL);
+	ck_ra("target_map_CB", 0, codeptr_ra, (int) id, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -518,9 +522,9 @@ ompt_sync_region_wait (
 	char buf[128];
 	format_sync_type(kind, endpoint, buf);
 	if (in_implicit_task) {
-	    ck_ra("sync_region_wait_CB", codeptr_ra, (int) kind, buf);
+	    ck_ra("sync_region_wait_CB", 0, codeptr_ra, (int) kind, buf);
 	} else {
-	    ck_ra("sync_region_wait_CB", (const void *)1, (int) kind, buf);
+	    ck_ra("sync_region_wait_CB", 2, codeptr_ra, (int) kind, buf);
 	}
 }
 
@@ -539,9 +543,9 @@ ompt_sync_region (
 	char buf[128];
 	format_sync_type(kind, endpoint, buf);
 	if (in_implicit_task) {
-	    ck_ra("sync_region_CB", codeptr_ra, (int) kind, buf);
+	    ck_ra("sync_region_CB", 0, codeptr_ra, (int) kind, buf);
 	} else {
-	    ck_ra("sync_region_wait_CB", (const void *)1, (int) kind, buf);
+	    ck_ra("sync_region_CB", 2, codeptr_ra, (int) kind, buf);
 	}
 }
 
@@ -559,7 +563,7 @@ ompt_lock_init (
 {
 	char buffer[128];
 	format_lock_type (kind, buffer);
-	ck_ra("lock_init_CB", codeptr_ra, (int) kind, buffer);
+	ck_ra("lock_init_CB", 0, codeptr_ra, (int) kind, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -574,7 +578,7 @@ ompt_lock_destroy (
 {
 	char buffer[128];
 	format_lock_type (kind, buffer);
-	ck_ra("lock_destroy_CB", codeptr_ra, (int) kind, buffer);
+	ck_ra("lock_destroy_CB", 0, codeptr_ra, (int) kind, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -591,7 +595,7 @@ ompt_mutex_acquire (
 {
 	char buffer[128];
 	format_lock_type (kind, buffer);
-	ck_ra("mutex_acquire_CB", codeptr_ra, (int) kind, buffer);
+	ck_ra("mutex_acquire_CB", 0, codeptr_ra, (int) kind, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -605,7 +609,7 @@ ompt_mutex_acquired (
 {
 	char buffer[128];
 	format_lock_type (kind, buffer);
-	ck_ra("mutex_acquired_CB", codeptr_ra, (int) kind, buffer);
+	ck_ra("mutex_acquired_CB", 0, codeptr_ra, (int) kind, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -619,7 +623,7 @@ ompt_mutex_released(
 {
 	char buffer[128];
 	format_lock_type (kind, buffer);
-	ck_ra("mutex_released_CB", codeptr_ra, (int) kind, buffer);
+	ck_ra("mutex_released_CB", 0, codeptr_ra, (int) kind, buffer);
 }
 
 // ------------------------------------------------------------------------
@@ -632,7 +636,7 @@ ompt_dependences (
 	int ndeps
 )
 {
-	ck_ra("dependences_CB", (const void *)1, (int) ndeps, NULL);
+	ck_ra("dependences_CB", 1,(const void *)1, (int) ndeps, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -644,7 +648,7 @@ ompt_task_dependence (
 	ompt_data_t *sink_task_data
 )
 {
-	ck_ra("task_dependence_CB", (const void *)1, 0, NULL);
+	ck_ra("task_dependence_CB", 1,(const void *)1, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -657,7 +661,7 @@ ompt_nest_lock (
         const void *codeptr_ra
 )
 {
-	ck_ra("nest_lock_CB", codeptr_ra, (int) endpoint, 
+	ck_ra("nest_lock_CB", 0, codeptr_ra, (int) endpoint, 
 	    (endpoint == ompt_scope_begin ? "[begin] " : "[end] ") );
 }
 
@@ -670,7 +674,7 @@ ompt_flush (
         const void *codeptr_ra
 )
 {
-	ck_ra("flush_CB", codeptr_ra, 0, NULL);
+	ck_ra("flush_CB", 0, codeptr_ra, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -692,7 +696,7 @@ ompt_cancel (
         const void *codeptr_ra
 )
 {
-	ck_ra("cancel_CB", codeptr_ra, 0, ompt_cancel_flag_t_values[flags] );
+	ck_ra("cancel_CB", 0, codeptr_ra, 0, ompt_cancel_flag_t_values[flags] );
 }
 
 // ------------------------------------------------------------------------
@@ -706,7 +710,7 @@ ompt_control_tool (
         const void *codeptr_ra
 )
 {
-	ck_ra("control_tool_CB", codeptr_ra, 0, NULL);
+	ck_ra("control_tool_CB", 0, codeptr_ra, 0, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -721,7 +725,7 @@ ompt_device_initialize (
 	const char *documentation
 )
 {
-	ck_ra("device_initialize_CB", (const void*) 1, device_num, NULL);
+	ck_ra("device_initialize_CB", 1, (const void*) 1, device_num, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -733,7 +737,7 @@ ompt_device_finalize(
 	int device_num
 )
 {
-	ck_ra("device_finalize_CB", (const void*) 1, device_num, NULL);
+	ck_ra("device_finalize_CB", 1, (const void*) 1, device_num, NULL);
 }
 
 
@@ -753,7 +757,7 @@ ompt_device_load(
 	uint64_t module_id
 )
 {
-	ck_ra("device_load_CB", (const void*) 1, device_num, NULL);
+	ck_ra("device_load_CB", 1, (const void*) 1, device_num, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -765,7 +769,7 @@ ompt_device_unload (
 	uint64_t module_id
 )
 {
-	ck_ra("device_unload_CB", (const void*) 1, device_num, NULL);
+	ck_ra("device_unload_CB", 1, (const void*) 1, device_num, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -780,7 +784,7 @@ ompt_reduction (
         const void *codeptr_ra
 )
 {
-	ck_ra("reduction_CB", codeptr_ra, (int)kind, NULL);
+	ck_ra("reduction_CB", 0, codeptr_ra, (int)kind, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -794,7 +798,7 @@ ompt_dispatch (
         ompt_data_t instance
 )
 {
-	ck_ra("dispatch_CB", (const void*)1, (int)kind, NULL);
+	ck_ra("dispatch_CB", 1, (const void*)1, (int)kind, NULL);
 }
 
 // ------------------------------------------------------------------------
@@ -913,7 +917,6 @@ format_task_type(int type, char *buffer)
 void
 format_lock_type(ompt_mutex_t type, char *buffer)
 {
-	char *progress = buffer;
 	char *ctype = "unknown";
 
 	switch (type) {
@@ -940,20 +943,27 @@ format_lock_type(ompt_mutex_t type, char *buffer)
 		break;
 	}
 	sprintf(buffer, "[%s] ", ctype);
+
 }
 
 
 // ------------------------------------------------------------------------
 // ck_ra -- invoked from various callbacks
 //	check that the return address pointer is non-NULL
+//	ckra parameter is:
+//		0 to report an error if NULL
+//		1 if address is not supplied in the callback
+//		2 if in the implicit task
+//		3 if xxxx
+//
 // ------------------------------------------------------------------------
 void 
-ck_ra(const char * type, const void *ra, int param, char  *desc)
+ck_ra(const char * type, int ckra, const void *ra, int param, char  *desc)
 {
 	int	threadnum;
-	char	buf[256];
+	char	buf[512];
 	threadnum = omp_get_thread_num();
-	if (ra == NULL) {
+	if ( (ckra == 0) && (ra == NULL) ) {
 	    sprintf( buf,
 		"%25s -- ERROR  -- %sthread %3d, param = %d, codeptr_ra == NULL\n",
 		type, (desc != NULL? desc : ""), threadnum, param );
@@ -963,9 +973,27 @@ ck_ra(const char * type, const void *ra, int param, char  *desc)
 	    nfails ++;
 	} else {
 #ifdef TRACE_ALL
-	    sprintf( buf,
-		"%25s OK ck_ra  -- %sthread %3d, param = %d codeptr_ra = %p\n", 
-		type, (desc != NULL? desc : ""), threadnum, param, ra );
+	    if (ckra == 0) {
+		sprintf( buf,
+		    "%25s OK ck_ra  -- %sthread %3d, param = %d codeptr_ra = %p\n", 
+		    type, (desc != NULL? desc : ""), threadnum, param, ra );
+	    } else if (ckra == 1) {
+		sprintf( buf,
+		    "%25s OK ck_ra  -- %sthread %3d, param = %d\n", 
+		    type, (desc != NULL? desc : ""), threadnum, param );
+	    } else if (ckra == 2 ) {
+		sprintf( buf,
+		    "%25s OK ck_ra  -- %sthread %3d, param = %d codeptr_ra = %p -- in implicit task\n", 
+		    type, (desc != NULL? desc : ""), threadnum, param, ra );
+#if 0
+	    } else if (ckra == 3 ) {
+		sprintf( buf,
+		    "%25s OK ck_ra  -- %sthread %3d, param = %d codeptr_ra = %p -- initial task create\n", 
+		    type, (desc != NULL? desc : ""), threadnum, param, ra );
+#endif
+	    } else {
+		fprintf(stderr, "Ooops, INTERNAL ERROR -- invalid ckra parameter = %d\n", ckra);
+	    }
 	    ts_write (buf);
 #endif
 	}

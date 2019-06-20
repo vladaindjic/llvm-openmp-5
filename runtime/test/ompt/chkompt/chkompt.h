@@ -42,13 +42,13 @@ void	format_sync_type(ompt_sync_region_t, ompt_scope_endpoint_t endpoint, char *
 void	format_work_type(ompt_work_t, ompt_scope_endpoint_t endpoint, char *);
 void	format_task_type(int, char *);
 void	format_lock_type(ompt_mutex_t, char *);
-void	ck_ra(const char *, const void*, int, char*);
+void	ck_ra(const char *, int, const void*, int, char*);
 void	validate(const char *);
 void	delay(int);
 
 // pointers to those routines
 void	(*skew_delay_ptr)(int);
-void	(*ck_ra_ptr)(const char *, const void *, char *);
+void	(*ck_ra_ptr)(const char *, int, const void *, char *);
 void	(*validate_ptr)(const char *);
 void	(*delay_ptr)(int);
 
