@@ -363,14 +363,18 @@ void ompt_post_init() {
           ompt_thread_initial, __ompt_get_thread_data_internal());
     }
     ompt_data_t *task_data;
+    ompt_frame_t *task_frame;
     ompt_data_t *parallel_data;
-    __ompt_get_task_info_internal(0, NULL, &task_data, NULL, 
+    __ompt_get_task_info_internal(0, NULL, &task_data, &task_frame, 
 				  &parallel_data, NULL);
     if (ompt_enabled.ompt_callback_implicit_task) {
+      OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));   
       ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
         ompt_scope_begin, parallel_data /*parallel data*/, 
 	task_data, 1 /*team size*/, 1 /*initial task: index=1*/, 
 	ompt_task_initial);
+      OMPT_FRAME_CLEAR(task_frame, exit);
     }
 
     ompt_set_thread_state(root_thread, ompt_state_work_serial);
