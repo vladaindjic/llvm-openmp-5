@@ -18,6 +18,7 @@
 //******************************************************************************
 
 #include <cassert>
+#include <cstdio>
 #include <map>
 #include <vector>
 #include <atomic>
