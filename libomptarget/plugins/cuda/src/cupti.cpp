@@ -496,8 +496,8 @@ cupti_correlation_callback_dummy // __attribute__((unused))
 )
 {
   *host_op_id = 0;
+  return 0;
 }
-
 
 
 //******************************************************************************
