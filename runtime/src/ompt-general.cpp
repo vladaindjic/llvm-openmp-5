@@ -362,9 +362,9 @@ void ompt_post_init() {
       ompt_callbacks.ompt_callback(ompt_callback_thread_begin)(
           ompt_thread_initial, __ompt_get_thread_data_internal());
     }
-    ompt_data_t *task_data;
-    ompt_frame_t *task_frame;
-    ompt_data_t *parallel_data;
+    ompt_data_t *task_data = 0;
+    ompt_frame_t *task_frame = 0;
+    ompt_data_t *parallel_data = 0;
     __ompt_get_task_info_internal(0, NULL, &task_data, &task_frame, 
 				  &parallel_data, NULL);
     if (ompt_enabled.ompt_callback_implicit_task) {
