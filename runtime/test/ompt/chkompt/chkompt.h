@@ -16,7 +16,7 @@
 // #define NO_CALLBACKS
 // #define NO_NONEST
 
-#define RUN_SKEW 1
+#define RUN_SKEW
 #define NSKEW 1000000
 
 // ------------------------------------------------------------------------
