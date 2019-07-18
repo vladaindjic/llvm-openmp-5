@@ -55,7 +55,7 @@ int main()
   // CHECK-NOT: {{^}}0: Could not register callback 'ompt_callback_cancel'
 
   // CHECK: {{^}}0: NULL_POINTER=[[NULL:.*$]]
-  // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_task_create: parent_task_id=[[PARENT_TASK_ID:[0-9]+]], parent_task_frame.exit=[[NULL]], parent_task_frame.reenter=[[NULL]], new_task_id=[[TASK_ID:[0-9]+]], codeptr_ra=[[NULL]], task_type=ompt_task_initial=1, has_dependences=no
+  // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_implicit_task_begin: parallel_id=0, task_id=[[INITIAL_TASK_ID:[0-9]+]], team_size=1, thread_num=1
   
   // cancel for and sections
   // CHECK: {{^}}[[MASTER_ID]]: ompt_event_cancel: task_data=[[TASK_ID:[0-9]+]], flags=ompt_cancel_loop|ompt_cancel_activated=20, codeptr_ra={{0x[0-f]*}}
