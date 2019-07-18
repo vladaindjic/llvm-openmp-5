@@ -1274,11 +1274,15 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_TASK)(void (*func)(void *), void *data,
       __kmpc_omp_task(&loc, gtid, task);
     }
   } else {
+    __kmpc_omp_task_begin_if0(&loc, gtid, task);
+
 #if OMPT_SUPPORT
     kmp_info_t *thread;
     kmp_taskdata_t *taskdata;
     ompt_thread_info_t *thread_info;
     ompt_thread_info_t prev_thread_info;
+    ompt_frame_t *child_task_frame;
+
     if (ompt_enabled.enabled) {
       // Store the threads states and restore them after the task
       thread = __kmp_threads[gtid];
@@ -1292,24 +1296,26 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_TASK)(void (*func)(void *), void *data,
       thread_info->wait_id = 0;
       thread_info->state = ompt_state_work_parallel;
 
-      OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+      child_task_frame = &OMPT_CUR_TASK_INFO(__kmp_threads[gtid])->frame;
+
+      OMPT_FRAME_SET(child_task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
 		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 
       OMPT_STORE_RETURN_ADDRESS(gtid);
     }
 #endif
 
-    __kmpc_omp_task_begin_if0(&loc, gtid, task);
     func(data);
-    __kmpc_omp_task_complete_if0(&loc, gtid, task);
 
 #if OMPT_SUPPORT
     if (ompt_enabled.enabled) {
       // restore previous thread info
       *thread_info = prev_thread_info;
-      OMPT_FRAME_CLEAR(task_frame, exit);
+      OMPT_FRAME_CLEAR(child_task_frame, exit);
     }
 #endif
+
+    __kmpc_omp_task_complete_if0(&loc, gtid, task);
   }
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
