@@ -57,12 +57,8 @@ int main() {
 // CHECK: {{^}}[[MASTER_ID_1:[0-9]+]]: ompt_event_thread_begin:
 // CHECK-SAME: thread_type=ompt_thread_initial=1, thread_id=[[MASTER_ID_1]]
 
-// CHECK: {{^}}[[MASTER_ID_1]]: ompt_event_task_create: parent_task_id=0
-// CHECK-SAME: parent_task_frame.exit=[[NULL]]
-// CHECK-SAME: parent_task_frame.reenter=[[NULL]]
-// CHECK-SAME: new_task_id=[[PARENT_TASK_ID_1:[0-9]+]]
-// CHECK-SAME: codeptr_ra=[[NULL]], task_type=ompt_task_initial=1
-// CHECK-SAME: has_dependences=no
+// CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_implicit_task_begin: parallel_id=0
+// CHECK-SAME: task_id=[[PARENT_TASK_ID_1:[0-9]+]], team_size=1, thread_num=1
 
 // CHECK: {{^}}[[MASTER_ID_1]]: ompt_event_parallel_begin:
 // CHECK-SAME: parent_task_id=[[PARENT_TASK_ID_1]]
