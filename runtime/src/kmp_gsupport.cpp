@@ -542,7 +542,10 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_START)(void (*task)(void *),
 #endif
 }
 
-void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
+#ifndef KMP_DEBUG
+static
+#endif /* KMP_DEBUG */
+void __kmp_GOMP_parallel_end_internal(fork_context_e fork_context) {
   int gtid = __kmp_get_gtid();
   kmp_info_t *thr = __kmp_threads[gtid];
 
@@ -568,7 +571,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
     __kmp_join_call(&loc, gtid
 #if OMPT_SUPPORT
                     ,
-		    fork_context_gnu_task_program
+		    fork_context
 #endif
                     );
   } else {
@@ -582,6 +585,10 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
       OMPT_FRAME_CLEAR(parent_frame, enter);
     }
 #endif
+}
+
+void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
+  __kmp_GOMP_parallel_end_internal(fork_context_gnu_task_program);
 }
 
 // Loop worksharing constructs
@@ -1507,7 +1514,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL)(void (*task)(void *),
     OMPT_STORE_RETURN_ADDRESS(gtid);
   }
 #endif
-  KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)();
+  __kmp_GOMP_parallel_end_internal(fork_context_gnu_task_library);
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
     OMPT_FRAME_CLEAR(parent_frame, enter);
@@ -1572,7 +1579,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_SECTIONS)(void (*task)(void *),
   }
 #endif
 
-  KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)();
+  __kmp_GOMP_parallel_end_internal(fork_context_gnu_task_library);
   KA_TRACE(20, ("GOMP_parallel_sections exit: T#%d\n", gtid));
 }
 
@@ -1610,7 +1617,7 @@ void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_SECTIONS)(void (*task)(void *),
                       (schedule) != kmp_sch_static);                           \
     OMPT_LOOP_BEFORE_TASK();                                                   \
     task(data);                                                                \
-    KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)();                         \
+    __kmp_GOMP_parallel_end_internal(fork_context_gnu_task_library);	       \
     OMPT_LOOP_POST();							       \
                                                                                \
     KA_TRACE(20, (KMP_STR(func) " exit: T#%d\n", gtid));                       \
