@@ -588,7 +588,22 @@ void __kmp_GOMP_parallel_end_internal(fork_context_e fork_context) {
 }
 
 void KMP_EXPAND_NAME(KMP_API_NAME_GOMP_PARALLEL_END)(void) {
+  int gtid;
+
+#if OMPT_SUPPORT
+  if (ompt_enabled.enabled) {
+    gtid = __kmp_get_gtid();
+    OMPT_STORE_RETURN_ADDRESS(gtid); 
+  }
+#endif
+
   __kmp_GOMP_parallel_end_internal(fork_context_gnu_task_program);
+
+#if OMPT_SUPPORT
+  if (ompt_enabled.enabled) {
+    OMPT_CLEAR_RETURN_ADDRESS(gtid);
+  }
+#endif
 }
 
 // Loop worksharing constructs
