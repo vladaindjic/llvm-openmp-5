@@ -91,6 +91,7 @@ int main() {
   // CHECK: {{^}}0: NULL_POINTER=[[NULL:.*$]]
 
   // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_implicit_task_begin: parallel_id=0, task_id=[[INITIAL_TASK_ID:[0-9]+]], team_size=1, thread_num=1
+  // CHECK-NOT: 0: parallel_data initially not null
 
   // initial task
   // CHECK: {{^}}[[MASTER_ID]]: task level 0: parallel_id={{[0-9]+}}
