@@ -1309,7 +1309,7 @@ static int __kmp_barrier_template(enum barrier_type bt, int gtid, int is_split,
 #if OMPT_OPTIONAL
     my_task_data = OMPT_CUR_TASK_DATA(this_thr);
     my_parallel_data = OMPT_CUR_TEAM_DATA(this_thr);
-    return_address = OMPT_CUR_TEAM_INFO(this_thr)->master_return_address;
+    return_address = this_thr->th.ompt_thread_info.return_address; 
     barrier_kind = __ompt_get_barrier_kind(bt, this_thr);
     if (ompt_enabled.ompt_callback_sync_region) {
       ompt_callbacks.ompt_callback(ompt_callback_sync_region)(
