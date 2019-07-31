@@ -87,10 +87,13 @@ int main() {
 
   // Check if libomp supports the callbacks for this test.
   // CHECK-NOT: {{^}}0: Could not register callback 'ompt_callback_task_create'
+  // CHECK-NOT: {{^}}0: Could not register callback 'ompt_callback_implicit_task'
 
   // CHECK: {{^}}0: NULL_POINTER=[[NULL:.*$]]
 
-  // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_implicit_task_begin: parallel_id=0, task_id=[[INITIAL_TASK_ID:[0-9]+]], team_size=1, thread_num=1
+  // CHECK: {{^}}[[MASTER_ID:[0-9]+]]: ompt_event_initial_task_begin: parallel_id={{[0-9]+}}
+  // CHECK-SAME: task_id=[[INITIAL_TASK_ID:[0-9]+]], actual_parallelism=1, index=1, flags=1 
+
   // CHECK-NOT: 0: parallel_data initially not null
 
   // initial task

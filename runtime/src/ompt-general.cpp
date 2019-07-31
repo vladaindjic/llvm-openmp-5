@@ -362,9 +362,9 @@ void ompt_post_init() {
       ompt_callbacks.ompt_callback(ompt_callback_thread_begin)(
           ompt_thread_initial, __ompt_get_thread_data_internal());
     }
-    ompt_data_t *task_data = 0;
-    ompt_frame_t *task_frame = 0;
-    ompt_data_t *parallel_data = 0;
+    ompt_data_t *task_data = nullptr;
+    ompt_frame_t *task_frame = nullptr;
+    ompt_data_t *parallel_data = nullptr;
     __ompt_get_task_info_internal(0, NULL, &task_data, &task_frame, 
 				  &parallel_data, NULL);
     if (ompt_enabled.ompt_callback_implicit_task) {
@@ -536,8 +536,7 @@ OMPT_API_ROUTINE int ompt_get_task_info(int ancestor_level, int *type,
 
 OMPT_API_ROUTINE int ompt_get_task_memory(void **addr, size_t *size,
                                           int block) {
-  // stub
-  return 0;
+  return __ompt_get_task_memory_internal(addr, size, block);
 }
 
 /*****************************************************************************
@@ -712,9 +711,7 @@ OMPT_API_ROUTINE uint64_t ompt_get_unique_id(void) {
   return __ompt_get_unique_id_internal();
 }
 
-OMPT_API_ROUTINE void ompt_finalize_tool(void) {
-  // stub
-}
+OMPT_API_ROUTINE void ompt_finalize_tool(void) { __kmp_internal_end_atexit(); }
 
 /*****************************************************************************
  * Target

@@ -40,7 +40,6 @@ VERSION {
 
         _You_must_link_with_*;     # Mutual detection/MS compatibility symbols.
 
-
         #
         # Debugger support.
         #
