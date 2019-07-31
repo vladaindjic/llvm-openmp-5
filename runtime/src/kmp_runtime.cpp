@@ -1911,11 +1911,13 @@ int __kmp_fork_call(ident_t *loc, int gtid,
             /* OMPT implicit task begin */
             implicit_task_data = OMPT_CUR_TASK_DATA(master_th);
             if (ompt_enabled.ompt_callback_implicit_task) {
+	      ompt_frame_t *frame = &task_info->frame;
+	      OMPT_FRAME_SET(frame, exit, OMPT_GET_FRAME_ADDRESS(0),		
+			     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
               ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
                   ompt_scope_begin, OMPT_CUR_TEAM_DATA(master_th),
                   implicit_task_data, 1, __kmp_tid_from_gtid(gtid), ompt_task_implicit); // TODO: Can this be ompt_task_initial?
-              OMPT_CUR_TASK_INFO(master_th)
-                  ->thread_num = __kmp_tid_from_gtid(gtid);
+	      task_info->thread_num = __kmp_tid_from_gtid(gtid);
             }
 
             /* OMPT state */
@@ -1939,18 +1941,26 @@ int __kmp_fork_call(ident_t *loc, int gtid,
 #if OMPT_SUPPORT
           if (ompt_enabled.enabled) {
             *exit_runtime_p = NULL;
+	    ompt_frame_t *frame = &task_info->frame;
+	    OMPT_FRAME_CLEAR(frame, exit);
             if (ompt_enabled.ompt_callback_implicit_task) {
+	      OMPT_FRAME_SET(frame, exit, OMPT_GET_FRAME_ADDRESS(0),		
+			     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
               ompt_callbacks.ompt_callback(ompt_callback_implicit_task)(
                   ompt_scope_end, NULL, &(task_info->task_data), 1,
                   OMPT_CUR_TASK_INFO(master_th)->thread_num, ompt_task_implicit); // TODO: Can this be ompt_task_initial?
+	      OMPT_FRAME_CLEAR(frame, exit);
             }
 
             ompt_parallel_data = *OMPT_CUR_TEAM_DATA(master_th);
             __ompt_lw_taskteam_unlink(master_th);
             if (ompt_enabled.ompt_callback_parallel_end) {
+	      OMPT_FRAME_SET(frame, exit, OMPT_GET_FRAME_ADDRESS(0),		
+			     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
               ompt_callbacks.ompt_callback(ompt_callback_parallel_end)(
                   &ompt_parallel_data, parent_task_data,
                   OMPT_INVOKER(call_context), return_address);
+	      OMPT_FRAME_CLEAR(frame, exit);
             }
             master_th->th.ompt_thread_info.state = ompt_state_overhead;
           }
