@@ -1746,7 +1746,7 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
       parent = new_taskdata->td_parent;
       parent_frame = &parent->ompt_task_info.frame;
       set_parent_frame = OMPT_FRAME_SET_P(parent_frame, enter);
-      if (set_parent_frame) {
+      if (!set_parent_frame) {
 	OMPT_FRAME_SET(parent_frame, enter, OMPT_GET_FRAME_ADDRESS(0),
 		       (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 	OMPT_STORE_RETURN_ADDRESS(gtid);
@@ -1782,7 +1782,7 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
                 "TASK_CURRENT_NOT_QUEUED: loc=%p task=%p\n",
                 gtid, loc_ref, new_taskdata));
 #if OMPT_SUPPORT
-  if (UNLIKELY(ompt_enabled.enabled && set_parent_frame)) {
+  if (UNLIKELY(ompt_enabled.enabled && !set_parent_frame)) {
     OMPT_FRAME_CLEAR(parent_frame, enter);
   }
 #endif
