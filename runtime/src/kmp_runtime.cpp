@@ -1362,16 +1362,16 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   serial_team->t.ompt_team_info.master_return_address = codeptr;
   if (ompt_enabled.enabled &&
       this_thr->th.ompt_thread_info.state != ompt_state_overhead) {
-    ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
-    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
-		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
-
     ompt_lw_taskteam_t lw_taskteam;
     __ompt_lw_taskteam_init(&lw_taskteam, this_thr, global_tid,
                             &ompt_parallel_data, codeptr);
 
     __ompt_lw_taskteam_link(&lw_taskteam, this_thr, 1);
     // don't use lw_taskteam after linking. content was swaped
+
+    ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
+    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
 
     /* OMPT implicit task begin */
     implicit_task_data = OMPT_CUR_TASK_DATA(this_thr);
