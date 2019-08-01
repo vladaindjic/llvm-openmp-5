@@ -34,11 +34,11 @@ static void HandleDefaultTargetOffload() {
   if (TargetOffloadPolicy == tgt_default) {
     if (omp_get_num_devices() > 0) {
       DP("Default TARGET OFFLOAD policy is now mandatory "
-         "(devicew were found)\n");
+         "(devices were found)\n");
       TargetOffloadPolicy = tgt_mandatory;
     } else {
       DP("Default TARGET OFFLOAD policy is now disabled "
-         "(devices were not found)\n");
+         "(no devices were found)\n");
       TargetOffloadPolicy = tgt_disabled;
     }
   }
@@ -58,8 +58,8 @@ static void HandleTargetOutcome(bool success) {
       }
       break;
     case tgt_default:
-        FATAL_MESSAGE0(1, "default offloading policy must switched to " 
-            "mandatory or disabled");
+      FATAL_MESSAGE0(1, "default offloading policy must be switched to "
+                        "mandatory or disabled");
       break;
     case tgt_mandatory:
       if (!success) {
@@ -67,6 +67,12 @@ static void HandleTargetOutcome(bool success) {
       }
       break;
   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// adds requires flags
+EXTERN void __tgt_register_requires(int64_t flags) {
+  RTLs.RegisterRequires(flags);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,7 +137,7 @@ EXTERN void __tgt_target_data_begin_nowait(int64_t device_id, int32_t arg_num,
     int32_t depNum, void *depList, int32_t noAliasDepNum,
     void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
-    __kmpc_omp_taskwait(NULL, 0);
+    __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
 
@@ -196,7 +202,7 @@ EXTERN void __tgt_target_data_end_nowait(int64_t device_id, int32_t arg_num,
     int32_t depNum, void *depList, int32_t noAliasDepNum,
     void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
-    __kmpc_omp_taskwait(NULL, 0);
+    __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
 
@@ -241,7 +247,7 @@ EXTERN void __tgt_target_data_update_nowait(
     int64_t *arg_sizes, int64_t *arg_types, int32_t depNum, void *depList,
     int32_t noAliasDepNum, void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
-    __kmpc_omp_taskwait(NULL, 0);
+    __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
 
@@ -295,7 +301,7 @@ EXTERN int __tgt_target_nowait(int64_t device_id, void *host_ptr,
     int64_t *arg_types, int32_t depNum, void *depList, int32_t noAliasDepNum,
     void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
-    __kmpc_omp_taskwait(NULL, 0);
+    __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
 
@@ -352,7 +358,7 @@ EXTERN int __tgt_target_teams_nowait(int64_t device_id, void *host_ptr,
     int64_t *arg_types, int32_t team_num, int32_t thread_limit, int32_t depNum,
     void *depList, int32_t noAliasDepNum, void *noAliasDepList) {
   if (depNum + noAliasDepNum > 0)
-    __kmpc_omp_taskwait(NULL, 0);
+    __kmpc_omp_taskwait(NULL, __kmpc_global_thread_num(NULL));
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
 
@@ -364,10 +370,11 @@ EXTERN int __tgt_target_teams_nowait(int64_t device_id, void *host_ptr,
   return rc;
 }
 
-
-// The trip count mechanism will be revised - this scheme is not thread-safe.
 EXTERN void __kmpc_push_target_tripcount(int64_t device_id,
     uint64_t loop_tripcount) {
+  if (IsOffloadDisabled())
+    return;
+
   if (device_id == OFFLOAD_DEVICE_DEFAULT) {
     device_id = omp_get_default_device();
   }
@@ -380,5 +387,8 @@ EXTERN void __kmpc_push_target_tripcount(int64_t device_id,
 
   DP("__kmpc_push_target_tripcount(%" PRId64 ", %" PRIu64 ")\n", device_id,
       loop_tripcount);
-  Devices[device_id].loopTripCnt = loop_tripcount;
+  TblMapMtx.lock();
+  Devices[device_id].LoopTripCnt.emplace(__kmpc_global_thread_num(NULL),
+                                         loop_tripcount);
+  TblMapMtx.unlock();
 }
