@@ -1730,6 +1730,9 @@ kmp_int32 __kmpc_omp_task(ident_t *loc_ref, kmp_int32 gtid,
             &(new_taskdata->ompt_task_info.task_data),
             ompt_task_explicit | TASK_TYPE_DETAILS_FORMAT(new_taskdata), 0,
             codeptr);
+	if (!set_parent_frame) {
+	  OMPT_CLEAR_RETURN_ADDRESS(gtid);
+	}
       }
     } else {
       // We are scheduling the continuation of an UNTIED task.
