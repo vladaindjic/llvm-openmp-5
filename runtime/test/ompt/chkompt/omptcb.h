@@ -29,6 +29,8 @@ hrtime_t	starttime;
 // 	ompt_finalize -- which is invoked when the runtime shuts down
 // ------------------------------------------------------------------------
 
+void error_breakpoint() { }
+
 ompt_start_tool_result_t *
 ompt_start_tool
 ( 
@@ -968,6 +970,7 @@ ck_ra(const char * type, int ckra, const void *ra, int param, char  *desc)
 		"%25s -- ERROR  -- %sthread %3d, param = %d, codeptr_ra == NULL\n",
 		type, (desc != NULL? desc : ""), threadnum, param );
 	    ts_write (buf);
+	    error_breakpoint();
 
 #pragma omp atomic update
 	    nfails ++;
@@ -1039,11 +1042,13 @@ validate(const char *type)
 		"%25s -- ERROR  -- thread %3d task_frame = NULL\n",
 		type, thread_num);
 	    ts_write (buf);
+	    error_breakpoint();
 
 #pragma omp atomic update
 	    nfails ++;
 
 	} else if (task_frame->exit_frame.ptr == NULL) {
+	    error_breakpoint();
 	    sprintf( buf,
 		"%25s -- ERROR  -- thread %3d exit_frame.ptr = NULL\n",
 		type, thread_num);
@@ -1057,6 +1062,7 @@ validate(const char *type)
 		"%25s -- ERROR  -- thread %3d exit_frame.flags = 0\n",
 		type, thread_num);
 	    ts_write (buf);
+	    error_breakpoint();
 
 #pragma omp atomic update
 	    nfails ++;
@@ -1066,6 +1072,7 @@ validate(const char *type)
 		"%25s -- ERROR  -- thread %3d enter_frame.ptr != NULL\n",
 		type, thread_num);
 	    ts_write (buf);
+	    error_breakpoint();
 
 #pragma omp atomic update
 	    nfails ++;
@@ -1075,6 +1082,7 @@ validate(const char *type)
 		"%25s -- ERROR  -- thread %3d enter_frame.flags = 0x%02x != 0\n",
 		type, thread_num, task_frame->enter_frame_flags);
 	    ts_write (buf);
+	    error_breakpoint();
 
 #pragma omp atomic update
 	    nfails ++;
@@ -1095,6 +1103,7 @@ validate(const char *type)
 	                "%25s -- ERROR  -- thread %3d parent_task_frame = NULL\n",
 	                type, thread_num);
 	    	    ts_write (buf);
+		    error_breakpoint();
 
 #pragma omp atomic update
 		    nfails ++;
@@ -1103,6 +1112,7 @@ validate(const char *type)
 	                "%25s -- ERROR  -- thread %3d parent enter_frame.ptr = NULL\n",
 	                type, thread_num);
 	    	    ts_write (buf);
+		    error_breakpoint();
 
 #pragma omp atomic update
 	            nfails ++;
@@ -1111,6 +1121,7 @@ validate(const char *type)
 	                "%25s -- ERROR  -- thread %3d parent enter_frame_flags = 0\n",
 	                type, thread_num);
 	    	    ts_write (buf);
+		    error_breakpoint();
 
 #pragma omp atomic update
 	            nfails ++;
