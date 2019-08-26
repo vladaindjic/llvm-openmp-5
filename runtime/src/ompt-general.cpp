@@ -245,6 +245,7 @@ ompt_try_start_tool(unsigned int omp_version, const char *runtime_version) {
   if (ret)
     return ret;
 
+#if KMP_DYNAMIC_LIB
   // Try tool-libraries-var ICV
   const char *tool_libs = getenv("OMP_TOOL_LIBRARIES");
   if (tool_libs) {
@@ -270,6 +271,8 @@ ompt_try_start_tool(unsigned int omp_version, const char *runtime_version) {
     }
     __kmp_str_free(&libs);
   }
+#endif
+
   return ret;
 }
 
