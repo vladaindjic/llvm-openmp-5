@@ -94,7 +94,8 @@ typedef enum {
   macro(ompt_get_record_type)			\
   macro(ompt_get_record_native)			\
   macro(ompt_get_record_abstract)   \
-  macro(ompt_set_pc_sampling)
+  macro(ompt_set_pc_sampling)   \
+  macro(ompt_set_external_subscriber)
 
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
@@ -195,6 +196,8 @@ FOREACH_OMPT_TARGET_CALLBACK(declare_name)
 static device_info_t device_info;
 
 static std::atomic<uint64_t> cupti_correlation_count;
+
+static bool cupti_external_subscriber = false;
 
 //----------------------------------------
 // thread local data
@@ -554,6 +557,20 @@ ompt_set_pc_sampling
 
 
 static void
+ompt_set_external_subscriber
+(
+ int enable
+)
+{
+  if (enable) {
+    cupti_external_subscriber = true;
+  } else {
+    cupti_external_subscriber = false;
+  }
+}
+
+
+static void
 device_completion_callback
 (
  uint64_t relative_device_id,
@@ -668,6 +685,10 @@ ompt_correlation_start
 )
 {
   DP("enter ompt_correlation_start\n"); 
+
+  if (cupti_external_subscriber) {
+    return;
+  }
   if (cupti_correlation_count.fetch_add(1) == 0) {
     cupti_subscribe_callbacks();
   }
@@ -676,6 +697,7 @@ ompt_correlation_start
     cupti_correlation_enable(di->context, ompt_device_load, ompt_device_unload, libomptarget_get_target_info);
     load_handlers_registered = true;
   }
+
   DP("exit ompt_correlation_start\n"); 
 }
 
@@ -686,6 +708,11 @@ ompt_correlation_end
  ompt_device_info_t *di
 )
 {
+  DP("enter ompt_correlation_end\n"); 
+
+  if (cupti_external_subscriber) {
+    return;
+  }
   if (cupti_correlation_count.fetch_add(-1) == 1) {
     cupti_unsubscribe_callbacks();
   }
@@ -694,6 +721,8 @@ ompt_correlation_end
     cupti_correlation_disable(di->context);
     load_handlers_registered = false;
   }
+
+  DP("exit ompt_correlation_end\n"); 
 }
 
 

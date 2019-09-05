@@ -110,8 +110,7 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
   }
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-  ompt_interface.target_region_begin();
-  ompt_interface.target_enter_data(device_id);
+  ompt_interface.target_data_enter_begin(device_id);
 
   DeviceTy& Device = Devices[device_id];
 
@@ -127,7 +126,7 @@ EXTERN void __tgt_target_data_begin(int64_t device_id, int32_t arg_num,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
-  ompt_interface.target_region_end();
+  ompt_interface.target_data_enter_end(device_id);
 
   ompt_interface.ompt_state_clear();
 }
@@ -185,14 +184,13 @@ EXTERN void __tgt_target_data_end(int64_t device_id, int32_t arg_num,
 #endif
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-  ompt_interface.target_region_begin();
-  ompt_interface.target_exit_data(device_id);
+  ompt_interface.target_data_exit_begin(device_id);
 
   int rc = target_data_end(Device, arg_num, args_base,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
-  ompt_interface.target_region_end();
+  ompt_interface.target_data_exit_end(device_id);
 
   ompt_interface.ompt_state_clear();
 }
@@ -229,15 +227,14 @@ EXTERN void __tgt_target_data_update(int64_t device_id, int32_t arg_num,
   }
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-  ompt_interface.target_region_begin();
-  ompt_interface.target_update(device_id);
+  ompt_interface.target_update_begin(device_id);
 
   DeviceTy& Device = Devices[device_id];
   int rc = target_data_update(Device, arg_num, args_base,
       args, arg_sizes, arg_types);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
-  ompt_interface.target_region_end();
+  ompt_interface.target_update_end(device_id);
 
   ompt_interface.ompt_state_clear();
 }
@@ -274,8 +271,7 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
   }
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-  ompt_interface.target_region_begin();
-  ompt_interface.target(device_id);
+  ompt_interface.target_begin(device_id);
 
 #ifdef OMPTARGET_DEBUG
   for (int i=0; i<arg_num; ++i) {
@@ -289,7 +285,7 @@ EXTERN int __tgt_target(int64_t device_id, void *host_ptr, int32_t arg_num,
       arg_types, 0, 0, false /*team*/);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
-  ompt_interface.target_region_end();
+  ompt_interface.target_end(device_id);
 
   ompt_interface.ompt_state_clear();
 
@@ -331,8 +327,7 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
   }
 
   ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-  ompt_interface.target_region_begin();
-  ompt_interface.target(device_id);
+  ompt_interface.target_begin(device_id);
 
 #ifdef OMPTARGET_DEBUG
   for (int i=0; i<arg_num; ++i) {
@@ -346,7 +341,7 @@ EXTERN int __tgt_target_teams(int64_t device_id, void *host_ptr,
       arg_types, team_num, thread_limit, true /*team*/);
   HandleTargetOutcome(rc == OFFLOAD_SUCCESS);
 
-  ompt_interface.target_region_end();
+  ompt_interface.target_end(device_id);
 
   ompt_interface.ompt_state_clear();
 
