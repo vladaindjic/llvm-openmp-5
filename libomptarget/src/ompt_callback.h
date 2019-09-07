@@ -25,8 +25,9 @@
 
 #include <ompt.h>
 
-struct OmptInterface {
-  void ompt_state_set_helper(void *enter_frame, void *codeptr_ra, int flags, int state);
+class OmptInterface {
+ public:
+  OmptInterface() : _enter_frame(NULL), _codeptr_ra(NULL), _state(ompt_state_idle) {}
 
   void ompt_state_set(void *enter_frame, void *codeptr_ra);
 
@@ -63,12 +64,15 @@ struct OmptInterface {
   void target_data_exit_end(int64_t device_id);
 
   void target_update_begin(int64_t device_id);
-  
+
   void target_update_end(int64_t device_id);
 
   void target_begin(int64_t device_id);
 
   void target_end(int64_t device_id);
+
+ private:
+  void ompt_state_set_helper(void *enter_frame, void *codeptr_ra, int flags, int state);
 
   // begin/end target op marks
   void target_operation_begin();
@@ -77,9 +81,10 @@ struct OmptInterface {
 
   // begin/end target region marks
   uint64_t target_region_begin();
-  
+
   uint64_t target_region_end();
 
+ private:
   void *_enter_frame;
   void *_codeptr_ra;
   int _state;

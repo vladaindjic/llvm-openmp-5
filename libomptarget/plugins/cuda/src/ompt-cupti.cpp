@@ -94,8 +94,7 @@ typedef enum {
   macro(ompt_get_record_type)			\
   macro(ompt_get_record_native)			\
   macro(ompt_get_record_abstract)   \
-  macro(ompt_set_pc_sampling)   \
-  macro(ompt_set_external_subscriber)
+  macro(ompt_set_pc_sampling)
 
 
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
@@ -197,8 +196,6 @@ static device_info_t device_info;
 
 static std::atomic<uint64_t> cupti_correlation_count;
 
-static bool cupti_external_subscriber = false;
-
 //----------------------------------------
 // thread local data
 //----------------------------------------
@@ -206,8 +203,8 @@ static bool cupti_external_subscriber = false;
 thread_local ompt_record_abstract_t ompt_record_abstract;
 thread_local ompt_id_t ompt_correlation_id;
 
-thread_local int   code_device_global_id;
-thread_local int   code_device_relative_id;
+thread_local int code_device_global_id;
+thread_local int code_device_relative_id;
 thread_local const char *code_path;
 thread_local void *code_host_addr;
 
@@ -557,20 +554,6 @@ ompt_set_pc_sampling
 
 
 static void
-ompt_set_external_subscriber
-(
- int enable
-)
-{
-  if (enable) {
-    cupti_external_subscriber = true;
-  } else {
-    cupti_external_subscriber = false;
-  }
-}
-
-
-static void
 device_completion_callback
 (
  uint64_t relative_device_id,
@@ -686,9 +669,6 @@ ompt_correlation_start
 {
   DP("enter ompt_correlation_start\n"); 
 
-  if (cupti_external_subscriber) {
-    return;
-  }
   if (cupti_correlation_count.fetch_add(1) == 0) {
     cupti_subscribe_callbacks();
   }
@@ -710,9 +690,6 @@ ompt_correlation_end
 {
   DP("enter ompt_correlation_end\n"); 
 
-  if (cupti_external_subscriber) {
-    return;
-  }
   if (cupti_correlation_count.fetch_add(-1) == 1) {
     cupti_unsubscribe_callbacks();
   }
@@ -793,7 +770,7 @@ ompt_pause_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  bool result = true;
+  bool result = false;
 
   DP("enter ompt_pause_trace(device=%p, begin_pause=%d) device_id=%d\n", 
      (void *) device, begin_pause, di->global_id);
@@ -803,10 +780,10 @@ ompt_pause_trace
   if ((begin_pause && di->cupti_active_count.fetch_add(-1) == 1) ||
     (!begin_pause && di->cupti_active_count.fetch_add(1) == 0)) {
     cupti_trace_pause(context, begin_pause);
+    // pause trace delivery for this device
+    di->paused = begin_pause;
+    result = true;
   }
-
-  // pause trace delivery for this device
-  di->paused = begin_pause;
 
   DP("exit ompt_pause_trace returns %d\n", result);
 
@@ -824,21 +801,25 @@ ompt_start_trace
 {
   ompt_device_info_t *di = ompt_device_info(device);
   CUcontext context = di->context;
-  bool status = true;
 
   DP("enter ompt_start_trace(device=%p, request=%p, complete=%p) device_id=%d\n", 
      (void *) device, fnptr_to_ptr(request), fnptr_to_ptr(complete), di->global_id);  
+
+  // This device has been registered
+  if (di->cupti_active_count.fetch_add(1) != 0) {
+    return false;
+  }
 
   di->request_callback = request;
   di->complete_callback = complete;
 
   cupti_trace_init(cupti_buffer_alloc, cupti_buffer_completion_callback);
 
-  if (di->cupti_active_count.fetch_add(1) == 0) {
-    cupti_trace_start(context);
-  } 
+  cupti_trace_start(context);
 
-  return status;
+  ompt_correlation_start(di);
+
+  return true;
 }
 
 
@@ -849,11 +830,17 @@ ompt_stop_trace
 )
 {
   DP("enter ompt_stop_trace\n");
+
   ompt_device_info_t *di = ompt_device_info(device);
-  di->cupti_active_count.fetch_add(-1);
+  if (di->cupti_active_count.fetch_add(-1) != 0) {
+    return false;
+  }
+
   di->paused = true;
   cupti_trace_flush();
+
   DP("exit ompt_stop_trace\n");
+
   return true;
 }
 
@@ -1056,7 +1043,6 @@ ompt_device_init
          ompt_device_lookup,
          ompt_documentation);
     }
-    ompt_correlation_start(&device_info[device_id]);
   }
 
   DP("exit ompt_device_init\n");

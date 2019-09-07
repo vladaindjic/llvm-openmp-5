@@ -26,9 +26,6 @@
 
 #define OMPT_CALLBACK(fn, args) if (ompt_enabled && fn) fn args
 #define fnptr_to_ptr(x) ((void *) (uint64_t) x)
-#define OMPT_BEGIN_TAG 1
-#define OMPT_END_TAG 0
-
 
 /*******************************************************************************
  * class
@@ -95,7 +92,7 @@ static libomptarget_rtl_finalizer_t libomptarget_rtl_finalizer;
  * Thread local data
  *****************************************************************************/
 
-thread_local OmptInterface ompt_interface = {0, 0, ompt_state_idle};
+thread_local OmptInterface ompt_interface;
 
 static thread_local uint64_t ompt_target_region_id = 1;
 static thread_local uint64_t ompt_target_region_opid = 1;
@@ -131,10 +128,12 @@ void OmptInterface::ompt_state_set
  void *codeptr_ra
 ) 
 {
+#if 0
   if (ompt_enabled) {
     ompt_state_set_helper(enter_frame, codeptr_ra, OMPT_FRAME_FLAGS,
       ompt_state_work_parallel);
   }
+#endif
 }
 
 
@@ -195,15 +194,17 @@ void OmptInterface::target_operation_end() {
 void OmptInterface::target_data_alloc_begin(int64_t device_id, void *tgt_ptr_begin, size_t size) {
   target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_alloc,
-     tgt_ptr_begin, device_id, NULL, 0, size, _codeptr_ra, OMPT_BEGIN_TAG));
+    (ompt_scope_begin, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_alloc, tgt_ptr_begin, device_id, NULL,
+     0, size, _codeptr_ra));
 }
 
 
 void OmptInterface::target_data_alloc_end(int64_t device_id, void *tgt_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_alloc,
-     tgt_ptr_begin, device_id, NULL, 0, size, _codeptr_ra, OMPT_END_TAG));
+    (ompt_scope_end, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_alloc, tgt_ptr_begin,
+     device_id, NULL, 0, size, _codeptr_ra));
   target_operation_end();
 }
 
@@ -212,16 +213,18 @@ void OmptInterface::target_data_submit_begin(int64_t device_id, void *tgt_ptr_be
   void *hst_ptr_begin, size_t size) {
   target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_to_device,
-     hst_ptr_begin, 0, tgt_ptr_begin, device_id, size, _codeptr_ra, OMPT_BEGIN_TAG));
+    (ompt_scope_begin, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_transfer_to_device, hst_ptr_begin, 0, tgt_ptr_begin,
+     device_id, size, _codeptr_ra));
 }
 
 
 void OmptInterface::target_data_submit_end(int64_t device_id, void *tgt_ptr_begin,
   void *hst_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_to_device,
-     hst_ptr_begin, 0, tgt_ptr_begin, device_id, size, _codeptr_ra, OMPT_END_TAG));
+    (ompt_scope_end, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_transfer_to_device, hst_ptr_begin, 0, tgt_ptr_begin,
+     device_id, size, _codeptr_ra));
   target_operation_end();
 }
 
@@ -229,15 +232,17 @@ void OmptInterface::target_data_submit_end(int64_t device_id, void *tgt_ptr_begi
 void OmptInterface::target_data_delete_begin(int64_t device_id, void *tgt_ptr_begin) {
   target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_delete,
-     tgt_ptr_begin, device_id, NULL, 0, 0, _codeptr_ra, OMPT_BEGIN_TAG));
+    (ompt_scope_begin, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_delete, tgt_ptr_begin,
+     device_id, NULL, 0, 0, _codeptr_ra));
 }
 
 
 void OmptInterface::target_data_delete_end(int64_t device_id, void *tgt_ptr_begin) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn, 
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_delete,
-     tgt_ptr_begin, device_id, NULL, 0, 0, _codeptr_ra, OMPT_END_TAG));
+    (ompt_scope_end, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_delete, tgt_ptr_begin,
+     device_id, NULL, 0, 0, _codeptr_ra));
   target_operation_end();
 }
 
@@ -246,16 +251,18 @@ void OmptInterface::target_data_retrieve_begin(int64_t device_id, void *hst_ptr_
   void *tgt_ptr_begin, size_t size) {
   target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_data_op_fn,
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_from_device,
-     tgt_ptr_begin, device_id, hst_ptr_begin, 0, size, _codeptr_ra, OMPT_BEGIN_TAG));
+    (ompt_scope_begin, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_transfer_from_device, tgt_ptr_begin,
+     device_id, hst_ptr_begin, 0, size, _codeptr_ra));
 } 
 
 
 void OmptInterface::target_data_retrieve_end(int64_t device_id, void *hst_ptr_begin,
   void *tgt_ptr_begin, size_t size) {
   OMPT_CALLBACK(ompt_callback_target_data_op_fn,
-    (ompt_target_region_id, ompt_target_region_opid, ompt_target_data_transfer_from_device,
-     tgt_ptr_begin, device_id, hst_ptr_begin, 0, size, _codeptr_ra, OMPT_END_TAG));
+    (ompt_scope_end, ompt_target_region_id, ompt_target_region_opid,
+     ompt_target_data_transfer_from_device, tgt_ptr_begin,
+     device_id, hst_ptr_begin, 0, size, _codeptr_ra));
   target_operation_end();
 } 
 
@@ -263,13 +270,13 @@ void OmptInterface::target_data_retrieve_end(int64_t device_id, void *hst_ptr_be
 void OmptInterface::target_submit_begin(unsigned int num_teams) {
   target_operation_begin();
   OMPT_CALLBACK(ompt_callback_target_submit_fn, 
-		(ompt_target_region_id, ompt_target_region_opid, num_teams, OMPT_BEGIN_TAG));
+		(ompt_scope_begin, ompt_target_region_id, ompt_target_region_opid, num_teams));
 }
 
 
 void OmptInterface::target_submit_end(unsigned int num_teams) {
   OMPT_CALLBACK(ompt_callback_target_submit_fn, 
-		(ompt_target_region_id, ompt_target_region_opid, num_teams, OMPT_END_TAG));
+		(ompt_scope_end, ompt_target_region_id, ompt_target_region_opid, num_teams));
   target_operation_end();
 }
 
