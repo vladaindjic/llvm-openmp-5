@@ -12,8 +12,6 @@
 
 #include <omptarget.h>
 
-#include "ompt_callback.h"
-
 #include "device.h"
 #include "private.h"
 #include "rtl.h"
@@ -61,11 +59,7 @@ EXTERN void *omp_target_alloc(size_t size, int device_num) {
 
   DeviceTy &Device = Devices[device_num];
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   rc = Device.data_alloc(size, NULL);
-
-  ompt_interface.ompt_state_clear();
 
   DP("omp_target_alloc returns device ptr " DPxMOD "\n", DPxPTR(rc));
 
@@ -94,11 +88,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
 
   DeviceTy &Device = Devices[device_num];
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   Device.data_delete((void *)device_ptr);
-
-  ompt_interface.ompt_state_clear();
 
   DP("omp_target_free deallocated device ptr\n");
 }
@@ -129,11 +119,7 @@ EXTERN int omp_target_is_present(void *ptr, int device_num) {
   DeviceTy& Device = Devices[device_num];
   bool IsLast; // not used
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   int rc = (Device.getTgtPtrBegin(ptr, 0, IsLast, false) != NULL);
-
-  ompt_interface.ompt_state_clear();
 
   DP("Call to omp_target_is_present returns %d\n", rc);
   return rc;
@@ -165,7 +151,6 @@ static int omp_target_memcpy_internal(void *dst, void *src, size_t length,
   void *srcAddr = (char *)src + src_offset;
   void *dstAddr = (char *)dst + dst_offset;
 
-
   if (src_device == omp_get_initial_device() &&
       dst_device == omp_get_initial_device()) {
     DP("copy from host to host\n");
@@ -190,7 +175,6 @@ static int omp_target_memcpy_internal(void *dst, void *src, size_t length,
       rc = DstDev.data_submit(dstAddr, buffer, length);
   }
 
-
   DP("omp_target_memcpy returns %d\n", rc);
   return rc;
 }
@@ -198,12 +182,8 @@ static int omp_target_memcpy_internal(void *dst, void *src, size_t length,
 EXTERN int omp_target_memcpy(void *dst, void *src, size_t length,
     size_t dst_offset, size_t src_offset, int dst_device, int src_device) {
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   int rc = omp_target_memcpy_internal(dst, src, length,
     dst_offset, src_offset, dst_device, src_device);
-
-  ompt_interface.ompt_state_clear();
 
   return rc;
 }
@@ -232,8 +212,6 @@ EXTERN int omp_target_memcpy_rect(void *dst, void *src, size_t element_size,
     return OFFLOAD_FAIL;
   }
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   int rc;
   if (num_dims == 1) {
     rc = omp_target_memcpy_internal(dst, src, element_size * volume[0],
@@ -257,15 +235,10 @@ EXTERN int omp_target_memcpy_rect(void *dst, void *src, size_t element_size,
 
       if (rc) {
         DP("Recursive call to omp_target_memcpy_rect returns unsuccessfully\n");
-
-        ompt_interface.ompt_state_clear();
-
         return rc;
       }
     }
   }
-
-  ompt_interface.ompt_state_clear();
 
   DP("omp_target_memcpy_rect returns %d\n", rc);
   return rc;
@@ -295,11 +268,7 @@ EXTERN int omp_target_associate_ptr(void *host_ptr, void *device_ptr,
   DeviceTy& Device = Devices[device_num];
   void *device_addr = (void *)((uint64_t)device_ptr + (uint64_t)device_offset);
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   int rc = Device.associatePtr(host_ptr, device_addr, size);
-
-  ompt_interface.ompt_state_clear();
 
   DP("omp_target_associate_ptr returns %d\n", rc);
   return rc;
@@ -326,12 +295,9 @@ EXTERN int omp_target_disassociate_ptr(void *host_ptr, int device_num) {
 
   DeviceTy& Device = Devices[device_num];
 
-  ompt_interface.ompt_state_set(OMPT_GET_FRAME_ADDRESS(0), OMPT_GET_RETURN_ADDRESS(0));
-
   int rc = Device.disassociatePtr(host_ptr);
 
-  ompt_interface.ompt_state_clear();
-
   DP("omp_target_disassociate_ptr returns %d\n", rc);
+
   return rc;
 }
