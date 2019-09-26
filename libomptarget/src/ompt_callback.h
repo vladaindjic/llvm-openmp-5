@@ -14,12 +14,14 @@
 #define _OMPTARGET_CALLBACK_H
 
 #if (__PPC64__ | __arm__)
-#define OMPT_GET_FRAME_ADDRESS(level) (*(void **)__builtin_frame_address(level))
-#define OMPT_FRAME_FLAGS (ompt_frame_runtime | ompt_frame_cfa)
+#define OMPT_GET_FRAME_ADDRESS(level) __builtin_frame_address(level)
+#define OMPT_FRAME_POSITION_DEFAULT ompt_frame_cfa 
 #else
 #define OMPT_GET_FRAME_ADDRESS(level) __builtin_frame_address(level)
-#define OMPT_FRAME_FLAGS (ompt_frame_runtime | ompt_frame_framepointer)
+#define OMPT_FRAME_POSITION_DEFAULT ompt_frame_framepointer 
 #endif
+
+#define OMPT_FRAME_FLAGS (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT)
 
 #define OMPT_GET_RETURN_ADDRESS(level) __builtin_return_address(level)
 
