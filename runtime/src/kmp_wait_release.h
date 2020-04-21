@@ -131,14 +131,14 @@ static void __ompt_implicit_task_end(kmp_info_t *this_thr,
       if (this_thr->th.th_team) 
         codeptr = OMPT_CUR_TEAM_INFO(this_thr)->master_return_address;
       ompt_callbacks.ompt_callback(ompt_callback_sync_region_wait)(
-          ompt_sync_region_barrier_implicit, ompt_scope_end, NULL, tId,
+          ompt_sync_region_barrier_implicit_final, ompt_scope_end, NULL, tId,
           codeptr);
     }
     if (ompt_enabled.ompt_callback_sync_region) {
       if (this_thr->th.th_team) 
         codeptr = OMPT_CUR_TEAM_INFO(this_thr)->master_return_address;
       ompt_callbacks.ompt_callback(ompt_callback_sync_region)(
-          ompt_sync_region_barrier_implicit, ompt_scope_end, NULL, tId,
+          ompt_sync_region_barrier_implicit_final, ompt_scope_end, NULL, tId,
           codeptr);
     }
 #endif
