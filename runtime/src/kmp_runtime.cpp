@@ -2350,6 +2350,12 @@ void __kmp_join_call(ident_t *loc, int gtid
 #if OMPT_SUPPORT
   ompt_data_t *parallel_data = &(team->t.ompt_team_info.parallel_data);
   void *codeptr = team->t.ompt_team_info.master_return_address;
+
+  // FIXME vi3: Store old value of parallel_data before freeing team.
+  // Since, ompt_callback_parallel_end is called after team has been free,
+  // it is possible that pointer to parallel_data points to a parallel_data
+  // of a new (recycled) team.
+  ompt_data_t old_parallel_data = *parallel_data;
 #endif
 
 #if USE_ITT_BUILD
@@ -2421,8 +2427,12 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
     if (ompt_enabled.enabled) {
-      __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
+      // __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
+      //                 codeptr);
+      // FIXME vi3: I think this is not necessary since this happens before freeing the team.
+      __kmp_join_ompt(gtid, master_th, parent_team, &old_parallel_data, fork_context,
                       codeptr);
+
     }
 #endif
 
@@ -2535,8 +2545,29 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
   if (ompt_enabled.enabled) {
-    __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
+    // __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
+    //                 codeptr);
+    // FIXME vi3: parallel_data represents a pointer to ompt_data_t structure stored
+    // inside team descriptor (datastructure).
+    // Data race may happened when sending parallel_data to ompt_callback_parallel_end
+    // after team has been freed.
+    // Consider the following example:
+    // 1. join has been called for parallel region A.
+    //    parallel_data points to a field in A's descriptor.
+    // 2. fork has been called for region B.
+    // 3. free A's team and its descriptor. parallel_data points to a field
+    //    contained in descriptor present in freelist.
+    // 4. allocate new team descriptor for B region by reusing previously freed descriptor.
+    //    parallel_data now points to a field stored in B's descriptor.
+    // 5. Calls ompt_callback_parallel_end by sending parallel_data.
+    //    Aforementioned callbacks thinks that region B is ending.
+    // In order to avoid this data rade, follow next steps:
+    // 1. Before freeing A's team, access to field to which parallel_data points and
+    //    save its (filed's) content to local variable old_parallel_data.
+    // 2. Send address of old_parallel_data to ompt_callback_parallel_end.
+    __kmp_join_ompt(gtid, master_th, parent_team, &old_parallel_data, fork_context,
                     codeptr);
+
   }
 #endif
 
@@ -5413,8 +5444,17 @@ void __kmp_free_team(kmp_root_t *root,
       }
     }
 
+    // FIXME vi3: This team is still active. If someone asks for parallel_data
+    // at level 0 (while this function is still active), parallel_data stored
+    // in this team's descriptor will be returned.
+    // On the other hand, if someone tries to access parent's parallel_data,
+    // (while this function is still active), NULL will be returned,
+    // because there's no way to access parent's descriptor
+    // (Team's connection to parent team has been disconnected
+    //  by invalidating t_parent pointer).
+
     // Reset pointer to parent team only for non-hot teams.
-    team->t.t_parent = NULL;
+    // team->t.t_parent = NULL;
     team->t.t_level = 0;
     team->t.t_active_level = 0;
 
