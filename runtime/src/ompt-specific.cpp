@@ -430,9 +430,10 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
         *thread_num = __kmp_get_tid();
       else if (prev_lwt)
         *thread_num = 0;
-      else
+      else if (prev_team){
         *thread_num = prev_team->t.t_master_tid;
-      //        *thread_num = team->t.t_master_tid;
+        //        *thread_num = team->t.t_master_tid;
+      }
     }
     return info ? 2 : 0;
   }

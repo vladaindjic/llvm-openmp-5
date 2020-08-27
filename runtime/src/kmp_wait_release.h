@@ -123,7 +123,10 @@ static void __ompt_implicit_task_end(kmp_info_t *this_thr,
                                      ompt_state_t ompt_state,
                                      ompt_data_t *tId) {
   int ds_tid = this_thr->th.th_info.ds.ds_tid;
-  if (ompt_state == ompt_state_wait_barrier_implicit) {
+  // vi3-ompt_state_wait_barrier_implicit_parallel
+  // old
+  // if (ompt_state == ompt_state_wait_barrier_implicit) {
+  if (ompt_state == ompt_state_wait_barrier_implicit_parallel) {
     this_thr->th.ompt_thread_info.state = ompt_state_overhead;
 #if OMPT_OPTIONAL
     void *codeptr = NULL;
@@ -267,7 +270,10 @@ final_spin=FALSE)
   ompt_data_t *tId;
   if (ompt_enabled.enabled) {
     ompt_entry_state = this_thr->th.ompt_thread_info.state;
-    if (!final_spin || ompt_entry_state != ompt_state_wait_barrier_implicit ||
+    // vi3-ompt_state_wait_barrier_implicit_parallel
+    // old
+    // if (!final_spin || ompt_entry_state != ompt_state_wait_barrier_implicit ||
+    if (!final_spin || ompt_entry_state != ompt_state_wait_barrier_implicit_parallel ||
         KMP_MASTER_TID(this_thr->th.th_info.ds.ds_tid)) {
       ompt_lw_taskteam_t *team =
           this_thr->th.th_team->t.ompt_serialized_team_info;

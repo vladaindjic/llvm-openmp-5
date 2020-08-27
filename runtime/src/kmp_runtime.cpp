@@ -7300,8 +7300,12 @@ void __kmp_internal_join(ident_t *id, int gtid, kmp_team_t *team) {
 
   __kmp_join_barrier(gtid); /* wait for everyone */
 #if OMPT_SUPPORT
+  // vi3-ompt_state_wait_barrier_implicit_parallel
+  // old
+  // if (ompt_enabled.enabled &&
+  //     this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit) {
   if (ompt_enabled.enabled &&
-      this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit) {
+      this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit_parallel) {
     int ds_tid = this_thr->th.th_info.ds.ds_tid;
     ompt_data_t *task_data = OMPT_CUR_TASK_DATA(this_thr);
     this_thr->th.ompt_thread_info.state = ompt_state_overhead;

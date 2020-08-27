@@ -1726,7 +1726,10 @@ void __kmp_join_barrier(int gtid) {
     if (!KMP_MASTER_TID(ds_tid))
       this_thr->th.ompt_thread_info.task_data = *OMPT_CUR_TASK_DATA(this_thr);
 #endif
-    this_thr->th.ompt_thread_info.state = ompt_state_wait_barrier_implicit;
+    // vi3-ompt_state_wait_barrier_implicit_parallel:
+    // old
+    // this_thr->th.ompt_thread_info.state = ompt_state_wait_barrier_implicit;
+     this_thr->th.ompt_thread_info.state = ompt_state_wait_barrier_implicit_parallel;
   }
 #endif
 
@@ -1983,8 +1986,12 @@ void __kmp_fork_barrier(int gtid, int tid) {
   }
 
 #if OMPT_SUPPORT
+  // vi3-ompt_state_wait_barrier_implicit_parallel
+  // old
+  // if (ompt_enabled.enabled &&
+  //     this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit) {
   if (ompt_enabled.enabled &&
-      this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit) {
+      this_thr->th.ompt_thread_info.state == ompt_state_wait_barrier_implicit_parallel) {
     int ds_tid = this_thr->th.th_info.ds.ds_tid;
     ompt_data_t *task_data = (team)
                                  ? OMPT_CUR_TASK_DATA(this_thr)
