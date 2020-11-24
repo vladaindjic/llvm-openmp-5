@@ -424,6 +424,44 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
     }
     if (parallel_data) {
       *parallel_data = team_info ? &(team_info->parallel_data) : NULL;
+      // vi3 fix:
+      // The following edge case can happen:
+      // - Assume that a thread is part of the region at depth 0 (reg0)
+      //   and that it's executing the corresponding implicit task
+      // - Currently active team of the thread is the team of reg0,
+      //   and the currently active task is the implicit task of reg0
+      // - Thread encounters at parallel construct so it's
+      //   going to form a new team of the nested region (reg1)
+      // - After that, thread sets that its currently active
+      //   team is the reg1's team.
+      // - Note that still active task is the reg0's implicit task.
+      // - If someone calls ompt_get_task_info(0) at this moment, the function
+      //   should return currently active task (reg0's implicit task)
+      //   and the parallel_data that belongs to region in which
+      //   the mentioned task has been executed.
+      //   (reg0's parallel_data).
+      // - Unfortunately, the current implementation will return
+      //   the parallel_data that belongs to the currently active team
+      //   (reg1's team)
+      // In order to prevent this, check if the team of the currently active
+      // task matches the team of the currently active region.
+      // If this is not the true, then the previously described scenario
+      // occurred, so try to access to the parent region team and use its
+      // parallel_data word.
+      if (taskdata && team && taskdata->td_team != team) {
+        // The team of the currently active task does not match the team of
+        // the currently active region.
+        if (team->t.t_parent && team->t.t_parent == taskdata->td_team) {
+          // Check whether the team of the parent region matches the
+          // current task team.
+          ompt_team_info_t *parent_team_info =
+              &team->t.t_parent->t.ompt_team_info;
+          if (parent_team_info) {
+            // use parent team parallel_data
+            *parallel_data = &parent_team_info->parallel_data;
+          }
+        }
+      }
     }
     if (thread_num) {
       if (level == 0)
