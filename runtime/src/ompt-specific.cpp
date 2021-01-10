@@ -459,6 +459,18 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
           if (parent_team_info) {
             // use parent team parallel_data
             *parallel_data = &parent_team_info->parallel_data;
+            // update values of team, prev_team and level
+            // in order to find valid information about thread_num
+            prev_team = team;
+            team = team->t.t_parent;
+            // If level is 0, then thread_num will be set to __kmp_get_tid()
+            // (see if-branch below).
+            // If however forming the new region team hasn't been finished,
+            // then return value of the __kmp_get_tid may not be valid.
+            // Incrementing level will lead to executing else-if-branch
+            // that will return the id of the thread in parent team
+            // (if thread is the part of it).
+            level++;
           }
         }
       }
@@ -469,8 +481,52 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
       else if (prev_lwt)
         *thread_num = 0;
       else if (prev_team){
-        *thread_num = prev_team->t.t_master_tid;
+        if (team) {
+          // Parallel region at the "ancestor_level" exists and is represented
+          // by the team stored in "team" variable.
+          // One thread of this "team" is the master of the "prev_team"
+          // (team of the nested region).
+          // That is the thread which "thread_num" inside the "team"
+          // matches prev_team->t.t_master_tid.
+          // The previous implementation didn't consider the case when
+          // the "thr" is not part of the "team". It ("thr") may be the
+          // worker inside prev_team's parallel region, or in one of
+          // its descendants. e.g. Worker thread of the innermost
+          // region calls this function with ancestor_level > 0.
+
+          // First check whether "thr" belongs to the "team"
+          if (thr == team->t.t_threads[prev_team->t.t_master_tid]) {
+            // "thr" is the master of the prev_team, so return t_master_tid
+            *thread_num = prev_team->t.t_master_tid;
+          } else {
+            // NOTE: "thr" doesn't belong to the "team"
+            // FIXME:
+            // Two possible options:
+            // - return 0 (according to standard)
+            // - set invalid value of thread_num (not sure if this
+            //   satisfies standard)
+            *thread_num = -1;
+          }
+        } else {
+          // NOTE: No parallel region at the ancestor_level.
+          // FIXME:
+          // Two possible options:
+          // - return 0 (according to standard)
+          // - set invalid value of thread_num (not sure if this
+          //   satisfies standard)
+          *thread_num = -1;
+        }
+        // old implementation
         //        *thread_num = team->t.t_master_tid;
+      } else {
+        // NOTE: prev_team == NULL, so there's no parallel region at
+        // this ancestor_level.
+        // FIXME vi3:
+        // Two possible options:
+        // - return 0 (according to standard)
+        // - set invalid value of thread_num (not sure if this
+        //   satisfies standard)
+        *thread_num = -1;
       }
     }
     return info ? 2 : 0;
