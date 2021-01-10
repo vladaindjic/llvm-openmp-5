@@ -557,6 +557,8 @@ static inline void __ompt_task_start(kmp_task_t *task,
                                      kmp_taskdata_t *current_task,
                                      kmp_int32 gtid) {
   kmp_taskdata_t *taskdata = KMP_TASK_TO_TASKDATA(task);
+  // Set scheduling_parent at the beginning of the function instead of the end.
+  taskdata->ompt_task_info.scheduling_parent = current_task;
   ompt_task_status_t status = ompt_task_switch;
   if (__kmp_threads[gtid]->th.ompt_thread_info.ompt_task_yielded) {
     status = ompt_task_yield;
@@ -568,7 +570,6 @@ static inline void __ompt_task_start(kmp_task_t *task,
         &(current_task->ompt_task_info.task_data), status,
         &(taskdata->ompt_task_info.task_data));
   }
-  taskdata->ompt_task_info.scheduling_parent = current_task;
 }
 
 // __ompt_task_finish:
@@ -1452,6 +1453,30 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
   }
 #endif
 
+#if 1
+// OMPT task begin
+#if OMPT_SUPPORT
+  // FIXME: what if new task has been set as th_current_task, before its
+  //   task->ompt_task_info.scheduling_parent is set to previosly active task.
+  //   __ompt_get_task_info_internal may use invalid value of
+  //   th_current_task->ompt_task_info.scheduling_parent
+  //   If task->ompt_task_info.scheduling_parent is NULL (not recycled)
+  //   then __ompt_get_task_info_internal is going to use task->td_parent
+  //   which should be the outer implicit task (that's ok from hpcrun
+  //   perspective I guess). If task has been reused, then
+  //   task->ompt_task_info.scheduling_parent may point to some inconsistent
+  //   memory location, and __ompt_get_task_info_internal behaviour is
+  //   non-deterministic.
+  ompt_frame_t *task_frame;
+  if (UNLIKELY(ompt_enabled.enabled)) {
+    task_frame = &OMPT_CUR_TASK_INFO(thread)->frame;
+    OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
+                   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
+    __ompt_task_start(task, current_task, gtid);
+  }
+#endif
+#endif
+
   // Proxy tasks are not handled by the runtime
   if (taskdata->td_flags.proxy != TASK_PROXY) {
     ANNOTATE_HAPPENS_AFTER(task);
@@ -1520,6 +1545,8 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
     }
 #endif // KMP_STATS_ENABLED
 
+#if 0
+// This was move above.
 // OMPT task begin
 #if OMPT_SUPPORT
     ompt_frame_t *task_frame;
@@ -1529,6 +1556,7 @@ static void __kmp_invoke_task(kmp_int32 gtid, kmp_task_t *task,
 		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
       __ompt_task_start(task, current_task, gtid);
     }
+#endif
 #endif
 
 #if USE_ITT_BUILD && USE_ITT_NOTIFY

@@ -361,8 +361,19 @@ final_spin=FALSE)
           KMP_DEBUG_ASSERT(!KMP_MASTER_TID(this_thr->th.th_info.ds.ds_tid));
 #if OMPT_SUPPORT
           // task-team is done now, other cases should be catched above
-          if (final_spin && ompt_enabled.enabled)
+          if (final_spin && ompt_enabled.enabled) {
             __ompt_implicit_task_end(this_thr, ompt_entry_state, tId);
+            // FIXME: Should this_thr->th.th_current_task be invalidated here?
+            //   If sample is delivered while thread is spin waiting below at
+            //   KMP_YIELD_OVERSUB_ELSE_SPIN(spins), then the
+            //   __ompt_get_task_info_internal will return information about
+            //   this_thr->th.th_current_task which may be recycled.
+            //   However, if invalid th_current_task here, then the
+            //   __kmp_finish_implicit_task will try to use invalidated value.
+            //   This happens in the test case where parallel region is nested
+            //   inside explicit tasks.
+            // this_thr->th.th_current_task = NULL;
+          }
 #endif
           this_thr->th.th_task_team = NULL;
           this_thr->th.th_reap_state = KMP_SAFE_TO_REAP;

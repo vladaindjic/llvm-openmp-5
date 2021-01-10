@@ -968,8 +968,22 @@ static void __kmp_fork_team_threads(kmp_root_t *root, kmp_team_t *team,
   KMP_MB();
 
   /* first, let's setup the master thread */
-  master_th->th.th_info.ds.ds_tid = 0;
-  master_th->th.th_team = team;
+  // FIXME <not-atomically-operation>:
+  //   Thread is the worker of the innermost region and needs to form
+  //   nested region. It should change the th_team and thread ds_tid.
+  //   Since this is not done atomically, then one of the following may occur:
+  //     - ds_tid is set to 0 before th_team has been updated. If someone calls
+  //       ompt_get_task_info(0), then the active region is the region in which
+  //       thread is the worker, while ds_tid shows the opposite
+  //     - th_team is updated first. If someone calls ompt_get_task_info(0), then
+  //       ds_tid show the thread is the worker in newly former th_team.
+  // master_th->th.th_info.ds.ds_tid = 0;
+  // FIXME vi3: Shouldn't we first initialize the team
+  //   and then set it as active?
+  //   __ompt_get_task_info_internal use information about
+  //   parent master_tid in order to provide valid thread_num
+  //   for higher ancestor_levels.
+  // master_th->th.th_team = team;
   master_th->th.th_team_nproc = team->t.t_nproc;
   master_th->th.th_team_master = master_th;
   master_th->th.th_team_serialized = FALSE;
@@ -1020,6 +1034,10 @@ static void __kmp_fork_team_threads(kmp_root_t *root, kmp_team_t *team,
     for (i = 1; i < team->t.t_nproc; i++) {
 
       /* fork or reallocate a new thread and install it in team */
+      // FIXME vi3: Check whether it's safe to set team as thr's active team,
+      //   before finishing initialization of the team.
+      //   This should not be priority right now.
+      //   It's not used inside __ompt_get_task_info_internal.
       kmp_info_t *thr = __kmp_allocate_thread(root, team, i);
       team->t.t_threads[i] = thr;
       KMP_DEBUG_ASSERT(thr);
@@ -1062,6 +1080,17 @@ static void __kmp_fork_team_threads(kmp_root_t *root, kmp_team_t *team,
       }
     }
   }
+
+  // I think it is ok to set the team right now, so that
+  // __ompt_get_task_info_internal has correct information
+  // about parent master_tid. It should be guaranteed that
+  // the function if able to provide right information about thread_num.
+  master_th->th.th_info.ds.ds_tid = 0;
+  // FIXME: if sample is delivered between these two statements, then
+  //   __ompt_get_task_info_internal may return invalid values.
+  //   See comment above marked as <not-atomically-operation>
+  //   for more information.
+  master_th->th.th_team = team;
 
   KMP_MB();
 }
