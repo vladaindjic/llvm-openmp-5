@@ -476,8 +476,21 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
       }
     }
     if (thread_num) {
-      if (level == 0)
+      if (level == 0) {
         *thread_num = __kmp_get_tid();
+#if 1
+        if (team->t.t_threads[0] == thr) {
+          // FIXME: If this function is called by the master thread of
+          //  the innermost region inside ompt_callback_implicit_task
+          //  (scope=end), this function may return thead_num different
+          //  then zero, which should be wrong.
+          //  This check should prevent this.
+          // thr is the master of the team
+          *thread_num = 0;
+          assert(*thread_num == 0);
+        }
+#endif
+      }
       else if (prev_lwt)
         *thread_num = 0;
       else if (prev_team){
