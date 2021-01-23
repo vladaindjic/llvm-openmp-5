@@ -512,6 +512,14 @@ static void __kmp_task_start(kmp_int32 gtid, kmp_task_t *task,
   }
 #endif /* BUILD_TIED_TASK_STACK */
 
+#if OMPT_SUPPORT
+  // FIXME: Set scheduling parent first.
+  //  Otherwise, if someone calls ompt_get_task_info(1) immediately after
+  //  current_task is set as the th_current_task, then the function will use
+  //  th_current_task->ompt_task_info.scheduling_parent which may be outdated
+  //  if th_current_task (here only current) is recycled.
+  taskdata->ompt_task_info.scheduling_parent = current_task;
+#endif
   // mark starting task as executing and as current task
   thread->th.th_current_task = taskdata;
 
@@ -568,7 +576,12 @@ static inline void __ompt_task_start(kmp_task_t *task,
         &(current_task->ompt_task_info.task_data), status,
         &(taskdata->ompt_task_info.task_data));
   }
-  taskdata->ompt_task_info.scheduling_parent = current_task;
+  // FIXME vi3: If taskdata is set to thr->th.th_current_task before
+  //  current_task is set as taskdata's scheduling_parent, and if
+  //  someone calls ompt_get_task_info(1), then the function will use
+  //  potentially outdated taskdata's scheduling_parent.
+  //  This happens if taskdata has been recycled.
+  //taskdata->ompt_task_info.scheduling_parent = current_task;
 }
 
 // __ompt_task_finish:
