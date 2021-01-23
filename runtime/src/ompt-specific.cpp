@@ -476,6 +476,17 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
       }
     }
     if (thread_num) {
+      // FIXME vi3: This is wrong. However, hpcrun only cares about whether
+      //  thread is master of the region or not.
+      if (team) {
+        if (thr == team->t.t_threads[0]) {
+          *thread_num = 0;
+        } else {
+          *thread_num = -1;
+        }
+      }
+
+#if 0
       if (level == 0) {
         *thread_num = __kmp_get_tid();
 #if 1
@@ -541,6 +552,8 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
         //   satisfies standard)
         *thread_num = -1;
       }
+
+#endif
     }
     return info ? 2 : 0;
   }
