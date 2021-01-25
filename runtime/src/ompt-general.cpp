@@ -333,6 +333,27 @@ void ompt_pre_init() {
 
 extern "C" int omp_get_initial_device(void);
 
+static int
+vi3_ompt_initialize
+(
+  ompt_function_lookup_t lookup,
+  int initial_device_num,
+  ompt_data_t *tool_data
+)
+{
+  return 1;
+}
+
+void
+vi3_ompt_finalize
+(
+  ompt_data_t *tool_data
+)
+{
+}
+
+static ompt_start_tool_result_t vi3_start_tool;
+
 void ompt_post_init() {
   //--------------------------------------------------
   // Execute the post-initialization logic only once.
@@ -343,7 +364,14 @@ void ompt_post_init() {
     return;
 
   ompt_post_initialized = 1;
-
+#if 1
+  if (!ompt_start_tool_result) {
+    vi3_start_tool.initialize = &vi3_ompt_initialize;
+    vi3_start_tool.finalize = &vi3_ompt_finalize;
+    vi3_start_tool.tool_data.value = 0;
+    ompt_start_tool_result = &vi3_start_tool;
+  }
+#endif
   //--------------------------------------------------
   // Initialize the tool if so indicated.
   //--------------------------------------------------
