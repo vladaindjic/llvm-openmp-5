@@ -1831,6 +1831,8 @@ template <bool ompt>
 static kmp_int32 __kmpc_omp_taskwait_template(ident_t *loc_ref, kmp_int32 gtid,
                                               void *frame_address,
                                               void *return_address) {
+  // TODO: consider removing the return_address parameter
+  return_address = NULL;
   kmp_taskdata_t *taskdata;
   kmp_info_t *thread;
   int thread_finished = FALSE;
@@ -1853,12 +1855,18 @@ static kmp_int32 __kmpc_omp_taskwait_template(ident_t *loc_ref, kmp_int32 gtid,
       taskdata->ompt_task_info.frame.enter_frame.ptr = frame_address;
 
       if (ompt_enabled.ompt_callback_sync_region) {
+        if (!return_address)
+          return_address = OMPT_LOAD_RETURN_ADDRESS(gtid);
+
         ompt_callbacks.ompt_callback(ompt_callback_sync_region)(
             ompt_sync_region_taskwait, ompt_scope_begin, my_parallel_data,
             my_task_data, return_address);
       }
 
       if (ompt_enabled.ompt_callback_sync_region_wait) {
+        if (!return_address)
+          return_address = OMPT_LOAD_RETURN_ADDRESS(gtid);
+
         ompt_callbacks.ompt_callback(ompt_callback_sync_region_wait)(
             ompt_sync_region_taskwait, ompt_scope_begin, my_parallel_data,
             my_task_data, return_address);
@@ -1948,7 +1956,7 @@ kmp_int32 __kmpc_omp_taskwait(ident_t *loc_ref, kmp_int32 gtid) {
   if (UNLIKELY(ompt_enabled.enabled)) {
     OMPT_STORE_RETURN_ADDRESS(gtid);
     return __kmpc_omp_taskwait_ompt(loc_ref, gtid, OMPT_GET_FRAME_ADDRESS(0),
-                                    OMPT_LOAD_RETURN_ADDRESS(gtid));
+                                    NULL);
   }
 #endif
   return __kmpc_omp_taskwait_template<false>(loc_ref, gtid, NULL, NULL);
