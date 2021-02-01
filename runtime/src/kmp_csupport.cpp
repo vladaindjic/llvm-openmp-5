@@ -554,6 +554,14 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
       ompt_frame_t *task_frame = &task_info->frame;
       OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
 		     (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));
+      // OMPT_FRAME_CLEAR(task_frame, exit);
+      // FIXME VI3: Even though this is the serialized parallel case,
+      //   I'm beginning discussion here.
+      //   When this call backs is about to be dispatched, all threads
+      //   finishes with implicit task execution.
+      //   I suppose exit frame of the task shouldn't be set,
+      //   since thread return from the use code.
+      //   Try to profile 352 benchmark from omp2012 and check the output.
       ompt_callbacks.ompt_callback(ompt_callback_parallel_end)(
           &(serial_team->t.ompt_team_info.parallel_data), parent_task_data,
           ompt_parallel_invoker_program, OMPT_LOAD_RETURN_ADDRESS(global_tid));
