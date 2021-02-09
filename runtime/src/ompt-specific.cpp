@@ -358,16 +358,29 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
     kmp_taskdata_t *taskdata = thr->th.th_current_task;
     if (taskdata == NULL)
       return 0;
-    kmp_team *team = thr->th.th_team, *prev_team = NULL;
+    kmp_team *team = taskdata->td_team, *prev_team = NULL;
+
     if (team == NULL)
       return 0;
     ompt_lw_taskteam_t *lwt = NULL,
                        *next_lwt = LWT_FROM_TEAM(taskdata->td_team),
                        *prev_lwt = NULL;
 
+    // NOTE: It is possible that taskdata->td_team and team doesn't match
+    //   in one of the following cases:
+    //   - team if formed, but the implicit task execution still hasn't start
+    //     so the taskdata points to the outer task instead of the implicit task
+    //     if newly formed team
+    //   - the implicit task of the innermost region has been finished, and
+    //     is revoked as th_current_task, however team is still active team.
+    //   Since the tool is interested to know the information about the tasks,
+    //   shouldn't we just used the information stored inside taskdatas?
+
+
+
     while (ancestor_level > 0) {
       // needed for thread_num
-      prev_team = team;
+      // FIXME Test prev_lwt?
       prev_lwt = lwt;
       // next lightweight team (if any)
       if (lwt)
@@ -387,6 +400,9 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
           taskdata = taskdata->td_parent;
           if (team == NULL)
             return 0;
+          // Store current team as previous team only when encounter
+          // on an implicit task.
+          prev_team = team;
           team = team->t.t_parent;
           if (taskdata) {
             next_lwt = LWT_FROM_TEAM(taskdata->td_team);
@@ -415,145 +431,95 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
         }
       }
     }
+    // If the info doesn't exists, then there's no task at the
+    // specified ancestor level. Return 0, and don't try to provide
+    // any of the passed arguments. Do the same if team doesn't exist
+    // at this level.
+    if (!info || !team) {
+      return 0;
+    }
+
+    // FIXME VI3: Even if it is determined that the info exists, I don't
+    //  this it is guaranteed it's still valid, and not reclaimed memory.
+    //  Consider the case when the thread is waiting on the last implicit
+    //  barrier.
     if (task_data) {
-      *task_data = info ? &info->task_data : NULL;
+      *task_data = &info->task_data;
     }
     if (task_frame) {
       // OpenMP spec asks for the scheduling task to be returned.
-      *task_frame = info ? &info->frame : NULL;
+      *task_frame = &info->frame;
     }
     if (parallel_data) {
       *parallel_data = team_info ? &(team_info->parallel_data) : NULL;
-      // vi3 fix:
-      // The following edge case can happen:
-      // - Assume that a thread is part of the region at depth 0 (reg0)
-      //   and that it's executing the corresponding implicit task
-      // - Currently active team of the thread is the team of reg0,
-      //   and the currently active task is the implicit task of reg0
-      // - Thread encounters at parallel construct so it's
-      //   going to form a new team of the nested region (reg1)
-      // - After that, thread sets that its currently active
-      //   team is the reg1's team.
-      // - Note that still active task is the reg0's implicit task.
-      // - If someone calls ompt_get_task_info(0) at this moment, the function
-      //   should return currently active task (reg0's implicit task)
-      //   and the parallel_data that belongs to region in which
-      //   the mentioned task has been executed.
-      //   (reg0's parallel_data).
-      // - Unfortunately, the current implementation will return
-      //   the parallel_data that belongs to the currently active team
-      //   (reg1's team)
-      // In order to prevent this, check if the team of the currently active
-      // task matches the team of the currently active region.
-      // If this is not the true, then the previously described scenario
-      // occurred, so try to access to the parent region team and use its
-      // parallel_data word.
-      if (taskdata && team && taskdata->td_team != team) {
-        // The team of the currently active task does not match the team of
-        // the currently active region.
-        if (team->t.t_parent && team->t.t_parent == taskdata->td_team) {
-          // Check whether the team of the parent region matches the
-          // current task team.
-          ompt_team_info_t *parent_team_info =
-              &team->t.t_parent->t.ompt_team_info;
-          if (parent_team_info) {
-            // use parent team parallel_data
-            *parallel_data = &parent_team_info->parallel_data;
-            // update values of team, prev_team and level
-            // in order to find valid information about thread_num
-            prev_team = team;
-            team = team->t.t_parent;
-            // If level is 0, then thread_num will be set to __kmp_get_tid()
-            // (see if-branch below).
-            // If however forming the new region team hasn't been finished,
-            // then return value of the __kmp_get_tid may not be valid.
-            // Incrementing level will lead to executing else-if-branch
-            // that will return the id of the thread in parent team
-            // (if thread is the part of it).
-            level++;
-          }
-        }
-      }
     }
     if (thread_num) {
-      // FIXME vi3: This is wrong. However, hpcrun only cares about whether
-      //  thread is master of the region or not.
-      if (team) {
-        if (thr == team->t.t_threads[0]) {
-          *thread_num = 0;
-        } else {
-          *thread_num = -1;
-        }
-      }
+      if (level == 0 || !prev_team) {
+        // prev_team == NULL if at ancestor_level is explicit task that
+        // belongs to the innermost region or the corresponding implicit task.
+        int tnum = __kmp_get_tid();
+        // NOTE: It is possible that master of the outer region
+        // is in the middle of creating/destroying the inner region.
+        // Even though it finished updated/invalidated current implicit task,
+        // tid remains 0.
+        if (team->t.t_threads[tnum] != thr) {
+          // Information stored inside th.th_info.ds.ds_tid doesn't match the
+          // current task. Either thread finished the implicit task and changes
+          // the ds_tied before invalidating th_current_task, or thread set
+          // ds_tid to be zero, but hasn't started working in nested team it
+          // has just formed.
+          kmp_team_t *parent_team = team->t.t_parent;
+          // I don't think that this can happen in the case when there is not
+          // nested regions;
+          assert(parent_team);
+          if (parent_team->t.t_threads[tnum] == thr) {
+            // Master thread of the innermost region is in the middle of finishing
+            // corresponding implicit task.
+            // It changed the tid to match the thread_num in parent's team.
+            // However, innermost implicit task isn't invalidated.
+            assert(team->t.t_threads[0] == thr);
+            // thread is the master of the team.
+            tnum = 0;
+          } else if (tnum == 0) {
+            // Since the worker thread is creating a new region, it updates tid
+            // to match 0, however the innermost implicit task is not updated.
+            // Need a mechanism to find the thread_num in outer region.
+            // Try to avoid iterating over team->t.t_threads.
+            int i;
+            for (i = 1; i < team->t.t_nproc; i++) {
+              if (team->t.t_threads[i] == thr) {
+                tnum = i;
+              }
+            }
+            assert(tnum != 0);
+          } else {
+            // I don't think this can happen.
+            assert(false);
+          }
 
-#if 0
-      if (level == 0) {
-        *thread_num = __kmp_get_tid();
-#if 1
-        if (team->t.t_threads[0] == thr) {
-          // FIXME: If this function is called by the master thread of
-          //  the innermost region inside ompt_callback_implicit_task
-          //  (scope=end), this function may return thead_num different
-          //  then zero, which should be wrong.
-          //  This check should prevent this.
-          // thr is the master of the team
-          *thread_num = 0;
-          assert(*thread_num == 0);
         }
-#endif
+        // store thread_num
+        *thread_num = tnum;
+        assert(team->t.t_threads[*thread_num] == thr);
+        // FIXME VI3 ASSERT THIS.
       }
       else if (prev_lwt)
         *thread_num = 0;
-      else if (prev_team){
-        if (team) {
-          // Parallel region at the "ancestor_level" exists and is represented
-          // by the team stored in "team" variable.
-          // One thread of this "team" is the master of the "prev_team"
-          // (team of the nested region).
-          // That is the thread which "thread_num" inside the "team"
-          // matches prev_team->t.t_master_tid.
-          // The previous implementation didn't consider the case when
-          // the "thr" is not part of the "team". It ("thr") may be the
-          // worker inside prev_team's parallel region, or in one of
-          // its descendants. e.g. Worker thread of the innermost
-          // region calls this function with ancestor_level > 0.
-
-          // First check whether "thr" belongs to the "team"
-          if (thr == team->t.t_threads[prev_team->t.t_master_tid]) {
-            // "thr" is the master of the prev_team, so return t_master_tid
-            *thread_num = prev_team->t.t_master_tid;
-          } else {
-            // NOTE: "thr" doesn't belong to the "team"
-            // FIXME:
-            // Two possible options:
-            // - return 0 (according to standard)
-            // - set invalid value of thread_num (not sure if this
-            //   satisfies standard)
-            *thread_num = -1;
-          }
-        } else {
-          // NOTE: No parallel region at the ancestor_level.
-          // FIXME:
-          // Two possible options:
-          // - return 0 (according to standard)
-          // - set invalid value of thread_num (not sure if this
-          //   satisfies standard)
-          *thread_num = -1;
-        }
-        // old implementation
-        //        *thread_num = team->t.t_master_tid;
-      } else {
-        // NOTE: prev_team == NULL, so there's no parallel region at
-        // this ancestor_level.
-        // FIXME vi3:
-        // Two possible options:
-        // - return 0 (according to standard)
-        // - set invalid value of thread_num (not sure if this
-        //   satisfies standard)
-        *thread_num = -1;
+      else {
+        // FIXME VI3 ASSERT THIS.
+        // Need to be careful in this case. It is possible tha thread is not
+        // part of the team, but some of the nested teams instead.
+        // Consider the case when the worker of the regions at level 2
+        // calls this function with ancestor_level 1.
+        // If thread is part of the team, then it is the master of prev_team,
+        // so use prev_team->t.t_master_tid.
+        // Otherwise, I think some special value should be return as thread_num.
+        // This case is not clarified in the OMPT 5.0 specification
+        int prev_team_master_id = prev_team->t.t_master_tid;
+        *thread_num = (team->t.t_threads[prev_team_master_id] == thr)
+            ? prev_team->t.t_master_tid : -1;
       }
-
-#endif
+      //        *thread_num = team->t.t_master_tid;
     }
     return info ? 2 : 0;
   }
