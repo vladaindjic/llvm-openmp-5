@@ -967,8 +967,23 @@ static void __kmp_fork_team_threads(kmp_root_t *root, kmp_team_t *team,
   KMP_DEBUG_ASSERT(master_gtid == __kmp_get_gtid());
   KMP_MB();
 
+  // The ds_tid is set again inside __kmp_initialize_info
+  // The ds_tid was set to zero, the team of the innermost region was formed
+  // and set as current team of the thread. However, the corresponding implicit
+  // task hasn't been set as th_current_task yet. At this moment,
+  // the th_current_task points to the innermost task being executed inside
+  // the outer region.
+  // Since __ompt_get_task_info_internal uses th_current_task, previous "early"
+  // update of the ds_tid leads to losing the information about the thread_num
+  // in th_current_task->team.
+  // Thread needs to iterate over the th_current_task->team->t_threads array
+  // in order to find the right thread_num.
+  // This can be avoided if ds_tid is updated after the implicit task
+  // (of the newly formed innermost region) is pushed to the thread
+  // (set as new the th_current_task).
+  // FIXME VI3: check if this is safe to do for hot teams!
   /* first, let's setup the master thread */
-  master_th->th.th_info.ds.ds_tid = 0;
+  //master_th->th.th_info.ds.ds_tid = 0;
   master_th->th.th_team = team;
   master_th->th.th_team_nproc = team->t.t_nproc;
   master_th->th.th_team_master = master_th;
@@ -1051,6 +1066,9 @@ static void __kmp_fork_team_threads(kmp_root_t *root, kmp_team_t *team,
     __kmp_partition_places(team);
 #endif
   }
+
+  // Update ds_tid after updating the th_current_task.
+  master_th->th.th_info.ds.ds_tid = 0;
 
   if (__kmp_display_affinity && team->t.t_display_affinity != 1) {
     for (i = 0; i < team->t.t_nproc; i++) {
@@ -4045,8 +4063,15 @@ static void __kmp_initialize_info(kmp_info_t *this_thr, kmp_team_t *team,
   KMP_MB();
 
   TCW_SYNC_PTR(this_thr->th.th_team, team);
-
-  this_thr->th.th_info.ds.ds_tid = tid;
+  // FIXME VI3: Hasn't this already done inside __kmp_fork_team_threads for the
+  //   thread with tid == 0.
+  //   The problem that may appear for the master thread of the
+  //   corresponding region (which is soon to be fully formed) if the ds_tid
+  //   is updated before the th_current_task is the following:
+  //   - ds_tid is set to zero
+  //   - th_current_task corresponds to the outer region so the
+  //     ds_tid doesn't match the thread_num in that team.
+  // this_thr->th.th_info.ds.ds_tid = tid;
   this_thr->th.th_set_nproc = 0;
   if (__kmp_tasking_mode != tskm_immediate_exec)
     // When tasking is possible, threads are not safe to reap until they are
@@ -4073,6 +4098,9 @@ static void __kmp_initialize_info(kmp_info_t *this_thr, kmp_team_t *team,
 
   __kmp_init_implicit_task(this_thr->th.th_team_master->th.th_ident, this_thr,
                            team, tid, TRUE);
+
+  // Update ds_tid now.
+  this_thr->th.th_info.ds.ds_tid = tid;
 
   KF_TRACE(10, ("__kmp_initialize_info2: T#%d:%d this_thread=%p curtask=%p\n",
                 tid, gtid, this_thr, this_thr->th.th_current_task));

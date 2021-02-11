@@ -455,48 +455,30 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
     }
     if (thread_num) {
       if (level == 0 || !prev_team) {
-        // prev_team == NULL if at ancestor_level is explicit task that
-        // belongs to the innermost region or the corresponding implicit task.
+        // prev_team == NULL if at ancestor_level is an implicit task of the
+        // innermost region or an explicit task that belongs to the region.
         int tnum = __kmp_get_tid();
         // NOTE: It is possible that master of the outer region
-        // is in the middle of creating/destroying the inner region.
-        // Even though it finished updated/invalidated current implicit task,
-        // tid remains 0.
+        // is in the middle of process of creating/destroying the inner region.
+        // Even though thread finished updating/invalidating th_current_task
+        // (implicit task that corresponds to the innermost region), the ds_tid
+        // may not be updated yet. Since it remains zero for both inner and
+        // outer region, it is safe to return zero as thread_num.
+        // However, this is not case for the worker of outer regions.
+        // Handle this carefully.
         if (team->t.t_threads[tnum] != thr) {
           // Information stored inside th.th_info.ds.ds_tid doesn't match the
-          // current task. Either thread finished the implicit task and changes
-          // the ds_tied before invalidating th_current_task, or thread set
-          // ds_tid to be zero, but hasn't started working in nested team it
-          // has just formed.
+          // thread_num inside the th_current_task->team.
+          // Either thread changed the ds_tid before invalidating
+          // th_current_task, or thread set
+          // newly formed implicit task as th_current_task, but hasn't updated
+          // ds_tid to be zero yet.
+          // team variable corresponds to the just finished/created implicit task.
+          // ds_tid matches thread_num inside team->t.t_parent.
+          // 0 is the thread_num of the thread inside the team.
           kmp_team_t *parent_team = team->t.t_parent;
-          // I don't think that this can happen in the case when there is not
-          // nested regions;
-          assert(parent_team);
-          if (parent_team->t.t_threads[tnum] == thr) {
-            // Master thread of the innermost region is in the middle of finishing
-            // corresponding implicit task.
-            // It changed the tid to match the thread_num in parent's team.
-            // However, innermost implicit task isn't invalidated.
-            assert(team->t.t_threads[0] == thr);
-            // thread is the master of the team.
-            tnum = 0;
-          } else if (tnum == 0) {
-            // Since the worker thread is creating a new region, it updates tid
-            // to match 0, however the innermost implicit task is not updated.
-            // Need a mechanism to find the thread_num in outer region.
-            // Try to avoid iterating over team->t.t_threads.
-            int i;
-            for (i = 1; i < team->t.t_nproc; i++) {
-              if (team->t.t_threads[i] == thr) {
-                tnum = i;
-              }
-            }
-            assert(tnum != 0);
-          } else {
-            // I don't think this can happen.
-            assert(false);
-          }
-
+          assert(parent_team && parent_team->t.t_threads[tnum] == thr);
+          tnum = 0;
         }
         // store thread_num
         *thread_num = tnum;
