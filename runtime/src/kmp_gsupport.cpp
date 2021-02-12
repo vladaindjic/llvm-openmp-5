@@ -496,7 +496,8 @@ __kmp_GOMP_fork_call(ident_t *loc, int gtid, fork_context_e fork_context, void (
 static void __kmp_GOMP_serialized_parallel(ident_t *loc, kmp_int32 gtid,
                                            void (*task)(void *)) {
 #if OMPT_SUPPORT
-  OMPT_STORE_RETURN_ADDRESS(gtid);
+  // FIXME vi3: Any good reason why return address is reset here?
+  //OMPT_STORE_RETURN_ADDRESS(gtid);
 #endif
   __kmp_serialized_parallel(loc, gtid);
 }

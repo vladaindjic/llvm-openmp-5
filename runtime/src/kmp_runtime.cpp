@@ -1206,13 +1206,16 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     ompt_task_info_t *parent_task_info;
     parent_task_info = OMPT_CUR_TASK_INFO(this_thr);
 
-    parent_task_info->frame.enter_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
+    // FIXME vi3: Any good reason why the enter_frame is reset here?
+    //parent_task_info->frame.enter_frame.ptr = OMPT_GET_FRAME_ADDRESS(0);
     if (ompt_enabled.ompt_callback_parallel_begin) {
       int team_size = 1;
-
+      // FIXME VI3: When dispatching this callback for the non-serialized regions,
+      //  ompt_parallel_invoker_runtime is used for gcc. Maybe we should
+      //  extend this function to accept fork_context parameter?
       ompt_callbacks.ompt_callback(ompt_callback_parallel_begin)(
           &(parent_task_info->task_data), &(parent_task_info->frame),
-          &ompt_parallel_data, team_size, ompt_parallel_invoker_program,
+          &ompt_parallel_data, team_size, ompt_parallel_invoker_runtime,
           codeptr);
     }
   }
