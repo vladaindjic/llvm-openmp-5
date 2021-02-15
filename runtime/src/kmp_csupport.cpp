@@ -532,6 +532,11 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   KMP_DEBUG_ASSERT(serial_team->t.t_threads[0] == this_thr);
 
 #if OMPT_SUPPORT
+  // Need to copy information about the ending parallel_data before eventually
+  // invalidating is inside __ompt_lw_taskteam_unlink.
+  // We don't need task_info (at least I think so), since we're sending
+  // parent task_data to the ompt_callback_parallel_end.
+  ompt_team_info_t ending_team;
   if (ompt_enabled.enabled &&
       this_thr->th.ompt_thread_info.state != ompt_state_overhead) {
 
@@ -568,12 +573,15 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
       OMPT_FRAME_CLEAR(task_frame, exit);
     }
 #endif
-    // FIXME VI3: Since the following function uses th_team (serialized
-    //  at this moment), do this now. I'm not sure if this is right or it is
-    //  safe to do it later.
+    if (ompt_enabled.ompt_callback_parallel_end) {
+      // Copy team_info before invalidating it, by executing the following code.
+      // Only if the tool has registered the callback.
+      // team_info can be invalidated by the code that invalidates the serialized
+      // team or by the __ompt_lw_taskteam_unlink
+      ending_team = *OMPT_CUR_TEAM_INFO(this_thr);
+    }
+    // unlink parent lwtask if eny
     __ompt_lw_taskteam_unlink(this_thr);
-    // Shouldn't this state be set at the beginning?
-    // this_thr->th.ompt_thread_info.state = ompt_state_overhead;
   }
 #endif
 
@@ -650,12 +658,14 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
 
 #if OMPT_SUPPORT
   if (ompt_enabled.ompt_callback_parallel_end) {
+    // Information about parent_task, since the current has been pop from the
+    // stack inside this funciton.
     ompt_task_info_t *task_info = __ompt_get_task_info_object(0);
     // FIXME VI3: When dispatching this callback for the non-serialized regions,
     //  ompt_parallel_invoker_runtime is used for gcc. Maybe we should
     //  extend this function to accept fork_context parameter?
     ompt_callbacks.ompt_callback(ompt_callback_parallel_end)(
-        &(serial_team->t.ompt_team_info.parallel_data), &(task_info->task_data),
+        &(ending_team.parallel_data), &(task_info->task_data),
         ompt_parallel_invoker_runtime, OMPT_LOAD_RETURN_ADDRESS(global_tid));
   }
 #endif
