@@ -354,158 +354,151 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
   kmp_info_t *thr = ompt_get_thread();
   int level = ancestor_level;
 
-  if (thr) {
-    kmp_taskdata_t *taskdata = thr->th.th_current_task;
-    if (taskdata == NULL)
-      return 0;
-    kmp_team *team = taskdata->td_team, *prev_team = NULL;
+  if (!thr)
+    return 0;
 
-    if (team == NULL)
-      return 0;
-    ompt_lw_taskteam_t *lwt = NULL,
-                       *next_lwt = LWT_FROM_TEAM(taskdata->td_team),
-                       *prev_lwt = NULL;
+  kmp_taskdata_t *taskdata = thr->th.th_current_task;
+  if (!taskdata)
+    return 0;
 
-    // NOTE: It is possible that taskdata->td_team and team doesn't match
-    //   in one of the following cases:
-    //   - team if formed, but the implicit task execution still hasn't start
-    //     so the taskdata points to the outer task instead of the implicit task
-    //     if newly formed team
-    //   - the implicit task of the innermost region has been finished, and
-    //     is revoked as th_current_task, however team is still active team.
-    //   Since the tool is interested to know the information about the tasks,
-    //   shouldn't we just used the information stored inside taskdatas?
+  kmp_team *team = taskdata->td_team, *prev_team = NULL;
 
+  if (!team)
+    return 0;
 
+  ompt_lw_taskteam_t *lwt = NULL;
 
-    while (ancestor_level > 0) {
-      // needed for thread_num
-      // FIXME Test prev_lwt?
-      prev_lwt = lwt;
-      // next lightweight team (if any)
-      if (lwt)
-        lwt = lwt->parent;
-
-      // next heavyweight team (if any) after
-      // lightweight teams are exhausted
-      if (!lwt && taskdata) {
-        // first try scheduling parent (for explicit task scheduling)
-        if (taskdata->ompt_task_info.scheduling_parent) {
-          taskdata = taskdata->ompt_task_info.scheduling_parent;
-        } else if (next_lwt) {
-          lwt = next_lwt;
-          next_lwt = NULL;
-        } else {
-          // then go for implicit tasks
-          taskdata = taskdata->td_parent;
-          if (team == NULL)
-            return 0;
-          // Store current team as previous team only when encounter
-          // on an implicit task.
-          prev_team = team;
-          team = team->t.t_parent;
-          if (taskdata) {
-            next_lwt = LWT_FROM_TEAM(taskdata->td_team);
-          }
-        }
+  while(ancestor_level > 0) {
+    if (team->t.t_serialized > 1) {
+      // access outer serialized team
+      lwt = lwt ? lwt->parent : team->t.ompt_serialized_team_info;
+    }
+    if (!lwt && taskdata) {
+      // all lightweight tasks are exhausted
+      if (taskdata->ompt_task_info.scheduling_parent) {
+        // FIXME VI3: What does happen if explicit task is present inside
+        //  serialized region.
+        // access to the outer explicit task
+        taskdata = taskdata->ompt_task_info.scheduling_parent;
+      } else {
+        // access to the outer implicit task and the corresponding team
+        taskdata = taskdata->td_parent;
+        assert(team);
+        prev_team = team;
+        team = team->t.t_parent;
       }
-      ancestor_level--;
     }
 
-    if (lwt) {
-      info = &lwt->ompt_task_info;
-      team_info = &lwt->ompt_team_info;
-      if (type) {
-        *type = ompt_task_implicit;
-      }
-    } else if (taskdata) {
-      info = &taskdata->ompt_task_info;
-      team_info = &team->t.ompt_team_info;
-      if (type) {
-        if (taskdata->td_parent) {
-          *type = (taskdata->td_flags.tasktype ? ompt_task_explicit
-                                               : ompt_task_implicit) |
-                  TASK_TYPE_DETAILS_FORMAT(taskdata);
-        } else {
-          *type = ompt_task_initial;
-        }
-      }
-    }
-    // If the info doesn't exists, then there's no task at the
-    // specified ancestor level. Return 0, and don't try to provide
-    // any of the passed arguments. Do the same if team doesn't exist
-    // at this level.
-    if (!info || !team) {
+    if (!taskdata) {
+      // No need to further process ancestors.
       return 0;
     }
-
-    // FIXME VI3: Even if it is determined that the info exists, I don't
-    //  this it is guaranteed it's still valid, and not reclaimed memory.
-    //  Consider the case when the thread is waiting on the last implicit
-    //  barrier.
-    if (task_data) {
-      *task_data = &info->task_data;
-    }
-    if (task_frame) {
-      // OpenMP spec asks for the scheduling task to be returned.
-      *task_frame = &info->frame;
-    }
-    if (parallel_data) {
-      *parallel_data = team_info ? &(team_info->parallel_data) : NULL;
-    }
-    if (thread_num) {
-      if (level == 0 || !prev_team) {
-        // prev_team == NULL if at ancestor_level is an implicit task of the
-        // innermost region or an explicit task that belongs to the region.
-        int tnum = __kmp_get_tid();
-        // NOTE: It is possible that master of the outer region
-        // is in the middle of process of creating/destroying the inner region.
-        // Even though thread finished updating/invalidating th_current_task
-        // (implicit task that corresponds to the innermost region), the ds_tid
-        // may not be updated yet. Since it remains zero for both inner and
-        // outer region, it is safe to return zero as thread_num.
-        // However, this is not case for the worker of outer regions.
-        // Handle this carefully.
-        if (team->t.t_threads[tnum] != thr) {
-          // Information stored inside th.th_info.ds.ds_tid doesn't match the
-          // thread_num inside the th_current_task->team.
-          // Either thread changed the ds_tid before invalidating
-          // th_current_task, or thread set
-          // newly formed implicit task as th_current_task, but hasn't updated
-          // ds_tid to be zero yet.
-          // team variable corresponds to the just finished/created implicit task.
-          // ds_tid matches thread_num inside team->t.t_parent.
-          // 0 is the thread_num of the thread inside the team.
-          kmp_team_t *parent_team = team->t.t_parent;
-          assert(parent_team && parent_team->t.t_threads[tnum] == thr);
-          tnum = 0;
-        }
-        // store thread_num
-        *thread_num = tnum;
-        assert(team->t.t_threads[*thread_num] == thr);
-        // FIXME VI3 ASSERT THIS.
-      }
-      else if (prev_lwt)
-        *thread_num = 0;
-      else {
-        // FIXME VI3 ASSERT THIS.
-        // Need to be careful in this case. It is possible tha thread is not
-        // part of the team, but some of the nested teams instead.
-        // Consider the case when the worker of the regions at level 2
-        // calls this function with ancestor_level 1.
-        // If thread is part of the team, then it is the master of prev_team,
-        // so use prev_team->t.t_master_tid.
-        // Otherwise, I think some special value should be return as thread_num.
-        // This case is not clarified in the OMPT 5.0 specification
-        int prev_team_master_id = prev_team->t.t_master_tid;
-        *thread_num = (team->t.t_threads[prev_team_master_id] == thr)
-            ? prev_team->t.t_master_tid : -1;
-      }
-      //        *thread_num = team->t.t_master_tid;
-    }
-    return info ? 2 : 0;
+    ancestor_level--;
   }
-  return 0;
+
+  if (lwt) {
+    info = &lwt->ompt_task_info;
+    team_info = &lwt->ompt_team_info;
+    if (type) {
+      *type = ompt_task_implicit;
+    }
+  } else {
+    assert(taskdata);
+    info = &taskdata->ompt_task_info;
+    team_info = &team->t.ompt_team_info;
+    if (type) {
+      if (taskdata->td_parent) {
+        *type = (taskdata->td_flags.tasktype ? ompt_task_explicit
+                                             : ompt_task_implicit) |
+                TASK_TYPE_DETAILS_FORMAT(taskdata);
+      } else {
+        *type = ompt_task_initial;
+      }
+    }
+  }
+
+  assert(info && team_info && team);
+
+  // FIXME VI3: Even if it is determined that the info exists, I don't know
+  //  if it is guaranteed it's still valid, and not reclaimed memory.
+  //  Consider the case when the thread is waiting on the last implicit
+  //  barrier.
+  if (task_data) {
+    *task_data = &info->task_data;
+  }
+  if (task_frame) {
+    // OpenMP spec asks for the scheduling task to be returned.
+    *task_frame = &info->frame;
+  }
+  if (parallel_data) {
+    *parallel_data = &(team_info->parallel_data);
+  }
+
+  if (thread_num) {
+    int tnum = -1;
+    if (lwt || team->t.t_serialized) {
+      // FIXME: lwt check might be redundant
+      assert(team->t.t_serialized);
+      // Team is serialized, so the thread is the master,
+      // if it belongs to the team.
+      tnum = team->t.t_threads[0] == thr ? 0 : -1;
+    } else if (level == 0 || !prev_team) {
+      // Thread is executing a task that belongs to the innermost region
+      // (which is not serialized).
+      // There might be some nested tasks in it.
+
+      // prev_team == NULL if at ancestor_level is an implicit task of the
+      // innermost region or an explicit task that belongs to the region.
+      tnum = __kmp_get_tid();
+      // NOTE: It is possible that master of the outer region
+      // is in the middle of process of creating/destroying the inner region.
+      // Even though thread finished updating/invalidating th_current_task
+      // (implicit task that corresponds to the innermost region), the ds_tid
+      // may not be updated yet. Since it remains zero for both inner and
+      // outer region, it is safe to return zero as thread_num.
+      // However, this is not case for the worker of outer regions.
+      // Handle this carefully.
+      if (team->t.t_threads[tnum] != thr) {
+        // Information stored inside th.th_info.ds.ds_tid doesn't match the
+        // thread_num inside the th_current_task->team.
+        // Either thread changed the ds_tid before invalidating
+        // th_current_task, or thread set
+        // newly formed implicit task as th_current_task, but hasn't updated
+        // ds_tid to be zero yet.
+        // team variable corresponds to the just finished/created implicit task.
+        // ds_tid matches thread_num inside team->t.t_parent.
+        // 0 is the thread_num of the thread inside the team.
+        kmp_team_t *parent_team = team->t.t_parent;
+        assert(parent_team && parent_team->t.t_threads[tnum] == thr);
+        tnum = 0;
+      }
+      // FIXME VI3 ASSERT THIS.
+    } else if (prev_team) {
+      // FIXME VI3 ASSERT THIS.
+      // Need to be careful in this case. It is possible tha thread is not
+      // part of the team, but some of the nested teams instead.
+      // Consider the case when the worker of the regions at level 2
+      // calls this function with ancestor_level 1.
+      // If thread is part of the team, then it is the master of prev_team,
+      // so use prev_team->t.t_master_tid.
+      // Otherwise, I think some special value should be return as thread_num.
+      // This case is not clarified in the OMPT 5.0 specification
+      int prev_team_master_id = prev_team->t.t_master_tid;
+      tnum = (team->t.t_threads[prev_team_master_id] == thr)
+                    ? prev_team_master_id : -1;
+    } else {
+      assert(0);
+    }
+
+    // store thread_num
+    *thread_num = tnum;
+    // assert that thread_num is correct
+    assert(*thread_num == -1 || team->t.t_threads[*thread_num] == thr);
+  }
+
+  // Consider if at some cases 1 should be return.
+  return 2;
+
 }
 
 int __ompt_get_task_memory_internal(void **addr, size_t *size, int blocknum) {
