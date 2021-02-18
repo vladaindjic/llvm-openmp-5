@@ -1221,6 +1221,8 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   }
 #endif // OMPT_SUPPORT
 
+  bool do_the_check_now = false;
+
   if (this_thr->th.th_team != serial_team) {
     // Nested level will be an index in the nested nthreads array
     int level = this_thr->th.th_team->t.t_level;
@@ -1263,6 +1265,28 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
            global_tid, serial_team));
     }
 
+    // FIXME VI3: serial_team, as well as implicit task may be reused.
+    //  Some information (e.g. parallel_data, task_data, task_frames) may remain
+    //  from previous region/task, so thread should invalidate them first.
+    //  Otherwise, the tool may receive wrong information.
+    // FIXME VI3: Is it enought to invalidate only team and task information?
+    //  Or it is better to memset everything to zero.
+    // FIXME VI3: This may be the problem for non-serialized regions and tasks
+    //  too?
+    // Invalidate familiar information about the region.
+    serial_team->t.ompt_team_info.parallel_data.ptr = NULL;
+    serial_team->t.ompt_team_info.master_return_address = NULL;
+    // Invalidate familiar information about the task
+    kmp_taskdata_t *ser_master_impl_task =
+        &serial_team->t.t_implicit_task_taskdata[0];
+    ser_master_impl_task->ompt_task_info.task_data.ptr = NULL;
+    ser_master_impl_task->ompt_task_info.frame.exit_frame.ptr = NULL;
+    ser_master_impl_task->ompt_task_info.frame.enter_frame.ptr = NULL;
+    ser_master_impl_task->ompt_task_info.thread_num = 0;
+    ser_master_impl_task->ompt_task_info.scheduling_parent = NULL;
+
+
+
     /* we have to initialize this serial team */
     KMP_DEBUG_ASSERT(serial_team->t.t_threads);
     KMP_DEBUG_ASSERT(serial_team->t.t_threads[0] == this_thr);
@@ -1281,6 +1305,15 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     this_thr->th.th_current_task->td_flags.executing = 0;
 
     __kmp_push_current_task_to_thread(this_thr, serial_team, 0);
+
+    // Since new region is not fully constructed yet, I suppose that parallel_data
+    // as well as task_frames should be invalid? If the team or task has been reused
+    // and some old information remains, then the tool may receive invalid information.
+    KMP_DEBUG_ASSERT(this_thr->th.th_current_task->ompt_task_info.frame.enter_frame.ptr == NULL &&
+    this_thr->th.th_current_task->ompt_task_info.frame.exit_frame.ptr == NULL);
+    KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_team_info.parallel_data.ptr == NULL);
+
+    do_the_check_now = true;
 
     /* TODO: GEH: do ICVs work for nested serialized teams? Don't we need an
        implicit task for each serialized task represented by
@@ -1386,6 +1419,12 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     ompt_lw_taskteam_t lw_taskteam;
     __ompt_lw_taskteam_init(&lw_taskteam, this_thr, global_tid,
                             &ompt_parallel_data, codeptr);
+    if (do_the_check_now) {
+      KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_team_info.parallel_data.ptr == NULL);
+      KMP_DEBUG_ASSERT(serial_team->t.ompt_team_info.parallel_data.ptr == NULL);
+      // FIXME VI3: Thread shouldn't use parallel_data until after linking
+      //  lightweight task, I think.
+    }
 
     __ompt_lw_taskteam_link(&lw_taskteam, this_thr, 1);
     // don't use lw_taskteam after linking. content was swaped

@@ -295,6 +295,8 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
     link_lwt->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
     *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
 
+    // FIXME VI3: What if sample is delivered here.
+
     ompt_task_info_t tmp_task = lwt->ompt_task_info;
     link_lwt->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
     *OMPT_CUR_TASK_INFO(thr) = tmp_task;
@@ -313,6 +315,7 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
 }
 
 void __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
+  // FIXME VI3: What if sample is delivered here?
   ompt_lw_taskteam_t *lwtask = thr->th.th_team->t.ompt_serialized_team_info;
   if (lwtask) {
     thr->th.th_team->t.ompt_serialized_team_info = lwtask->parent;
