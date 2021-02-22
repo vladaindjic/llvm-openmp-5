@@ -629,11 +629,13 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
         &this_thr->th.th_team->t.t_dispatch[serial_team->t.t_master_tid];
 
     __kmp_pop_current_task_from_thread(this_thr);
+#if OMPT_SUPPORT
     // Before the implicit task is popped, the tool may receive the pointer
     // to the corresponding parallel_data and eventually changes its value.
     // Use the team information stored inside serial_team and pass it to
     // the ompt_callback_parallel_end.
     ending_team = serial_team->t.ompt_team_info;
+#endif
 
     KMP_ASSERT(this_thr->th.th_current_task->td_flags.executing == 0);
     this_thr->th.th_current_task->td_flags.executing = 1;
@@ -649,13 +651,11 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     }
   } else {
 #if OMPT_SUPPORT
-    // Store the parallel_data of the ending region before unlinking the lwtask
-    // invalidates it.
-    // Use the team information store inside this_thr->th.th_team (serial_team)
-    // and pass it to the ompt_callback_parallel_end.
-    ending_team = serial_team->t.ompt_team_info;
-    KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_serialized_team_info != NULL);
-    __ompt_lw_taskteam_unlink(this_thr);
+    // Before unlinking the lwt, memoize content of the serial_team,
+    // find team information and passes parallel_data to the following
+    // callback.
+    ompt_lw_taskteam_t *ending_lwt = __ompt_lw_taskteam_unlink(this_thr);
+    ending_team = ending_lwt->ompt_team_info;
 #endif
     if (__kmp_tasking_mode != tskm_immediate_exec) {
       KA_TRACE(20, ("__kmpc_end_serialized_parallel: T#%d decreasing nesting "

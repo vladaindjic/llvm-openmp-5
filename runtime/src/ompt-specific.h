@@ -33,7 +33,7 @@ void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
 void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
                              int on_heap);
 
-void __ompt_lw_taskteam_unlink(kmp_info_t *thr);
+ompt_lw_taskteam_t *__ompt_lw_taskteam_unlink(kmp_info_t *thr);
 
 ompt_team_info_t *__ompt_get_teaminfo(int depth, int *size);
 

@@ -261,6 +261,29 @@ int __ompt_get_parallel_info_internal(int ancestor_level,
 // lightweight task team support
 //----------------------------------------------------------
 
+// memoize the information before linking/unlinking
+static __thread ompt_lw_taskteam_t tmp_lwt;
+static __thread bool switching_lwt = false;
+
+static inline void __ompt_lw_memo_team_and_task_info(bool on, kmp_info_t *thr) {
+  if (on) {
+    // Copy information present inside serialized_team descriptor,
+    // since it's going to be changed in two non-atomic operations.
+    tmp_lwt.ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
+    tmp_lwt.ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
+    tmp_lwt.parent = thr->th.th_team->t.ompt_serialized_team_info;
+    // If on, use tmp_lwt as the task at level 0, since the information
+    // present inside serialized team descriptor are not fully initialized.
+    // Otherwise, lw tasks are fully initialized and ready to be used.
+  }
+  switching_lwt = on;
+}
+
+static inline bool __ompt_lw_switching() {
+  return switching_lwt;
+}
+
+
 void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr, int gtid,
                              ompt_data_t *ompt_pid, void *codeptr) {
   // initialize parallel_data with input, return address to parallel_data on
@@ -290,6 +313,8 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
     }
     link_lwt->heap = on_heap;
 
+    __ompt_lw_memo_team_and_task_info(true, thr);
+
     // would be swap in the (on_stack) case.
     ompt_team_info_t tmp_team = lwt->ompt_team_info;
     link_lwt->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
@@ -306,6 +331,8 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
         thr->th.th_team->t.ompt_serialized_team_info;
     link_lwt->parent = my_parent;
     thr->th.th_team->t.ompt_serialized_team_info = link_lwt;
+
+    __ompt_lw_memo_team_and_task_info(false, thr);
   } else {
     // this is the first serialized team, so we just store the values in the
     // team and drop the taskteam-object
@@ -314,26 +341,36 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
   }
 }
 
-void __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
-  // FIXME VI3: What if sample is delivered here?
+ompt_lw_taskteam_t *__ompt_lw_taskteam_unlink(kmp_info_t *thr) {
+  // Store information present inside serial_team, before eventually
+  // invalidating it by using unlinking lwt->parent. Return tmp_lwt and use it
+  // to pass parallel_data to the ompt_callback_parallel_end.
+  __ompt_lw_memo_team_and_task_info(true, thr);
+
   ompt_lw_taskteam_t *lwtask = thr->th.th_team->t.ompt_serialized_team_info;
-  if (lwtask) {
-    thr->th.th_team->t.ompt_serialized_team_info = lwtask->parent;
+  KMP_DEBUG_ASSERT(lwtask);
 
-    ompt_team_info_t tmp_team = lwtask->ompt_team_info;
-    lwtask->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
-    *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
+  thr->th.th_team->t.ompt_serialized_team_info = lwtask->parent;
 
-    ompt_task_info_t tmp_task = lwtask->ompt_task_info;
-    lwtask->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
-    *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+  ompt_team_info_t tmp_team = lwtask->ompt_team_info;
+  lwtask->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
+  *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
 
-    if (lwtask->heap) {
-      __kmp_free(lwtask);
-      lwtask = NULL;
-    }
+  ompt_task_info_t tmp_task = lwtask->ompt_task_info;
+  lwtask->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
+  *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+
+  __ompt_lw_memo_team_and_task_info(false, thr);
+  // tmp_lwt->parent is going to be invalidated, so it's not safe
+  // to be used.
+
+  if (lwtask->heap) {
+    __kmp_free(lwtask);
+    lwtask = NULL;
   }
-  //    return lwtask;
+
+  // It is safe to use paralle_data for the ompt_callback_parallel_end.
+  return &tmp_lwt;
 }
 
 //----------------------------------------------------------
@@ -369,10 +406,15 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
   if (!team)
     return 0;
 
-  ompt_lw_taskteam_t *lwt = NULL;
+  // If thread is in the middle of creating new serialized region,
+  // use information stored inside tmp_lwt.
+  ompt_lw_taskteam_t *lwt = __ompt_lw_switching() ? &tmp_lwt : NULL;
 
   while(ancestor_level > 0) {
-    if (team->t.t_serialized > 1) {
+    if (team->t.t_serialized >= 1) {
+      // NOTE: team->t.t_serialized is incremented before lwt is set,
+      //  so it is possible that this condition fails. Just ignore it
+      //  then and access parent team.
       // access outer serialized team
       lwt = lwt ? lwt->parent : team->t.ompt_serialized_team_info;
     }
@@ -390,6 +432,8 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
         prev_team = team;
         team = team->t.t_parent;
       }
+    } else if (lwt) {
+      KMP_DEBUG_ASSERT(team->t.t_serialized >= 1);
     }
 
     if (!taskdata) {
