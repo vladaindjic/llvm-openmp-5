@@ -372,18 +372,18 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
   ompt_lw_taskteam_t *lwt = NULL;
 
   while(ancestor_level > 0) {
-    if (team->t.t_serialized > 1) {
-      // access outer serialized team
-      lwt = lwt ? lwt->parent : team->t.ompt_serialized_team_info;
-    }
-    if (!lwt && taskdata) {
-      // all lightweight tasks are exhausted
-      if (taskdata->ompt_task_info.scheduling_parent) {
-        // FIXME VI3: What does happen if explicit task is present inside
-        //  serialized region.
-        // access to the outer explicit task
-        taskdata = taskdata->ompt_task_info.scheduling_parent;
-      } else {
+    // If explicit task is placed inside nested serialized region,
+    // lwt is present, but we should first use task scheduling parent
+    if (taskdata && taskdata->ompt_task_info.scheduling_parent) {
+      // access outer task
+      taskdata = taskdata->ompt_task_info.scheduling_parent;
+    } else {
+      if (team->t.t_serialized > 1) {
+        // access outer serialized team
+        lwt = lwt ? lwt->parent : team->t.ompt_serialized_team_info;
+      }
+      if (!lwt && taskdata) {
+        // all lightweight tasks are exhausted
         // access to the outer implicit task and the corresponding team
         taskdata = taskdata->td_parent;
         assert(team);
