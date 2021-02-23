@@ -629,6 +629,24 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
         &this_thr->th.th_team->t.t_dispatch[serial_team->t.t_master_tid];
 
     __kmp_pop_current_task_from_thread(this_thr);
+
+    // If parent of the ending implicit task is an explicit task,
+    // free serial team, since it was allocated for the edge case when
+    // serialized region is enclosed by the explicit task.
+    // See more detailed explanation about this case in
+    // __kmp_serialized_parallel function.
+    if (this_thr->th.th_current_task->td_flags.tasktype) {
+      // Parent task of ending serialized region is an explicit task,
+      // enclosed by another serialized parallel region.
+      KMP_DEBUG_ASSERT(serial_team->t.t_parent->t.t_serialized);
+      this_thr->th.th_serial_team = serial_team->t.t_parent;
+      // Since only one thread was involved in serial_team , there is
+      // no need to release all other threads, as the last argument claims.
+      // It should be safe to pass null.
+//      __kmp_free_team(this_thr->th.th_root, serial_team
+//        USE_NESTED_HOT_ARG(NULL));
+    }
+
     // Before the implicit task is popped, the tool may receive the pointer
     // to the corresponding parallel_data and eventually changes its value.
     // Use the team information stored inside serial_team and pass it to

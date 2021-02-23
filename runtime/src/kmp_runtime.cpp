@@ -1168,6 +1168,9 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
 
   this_thr = __kmp_threads[global_tid];
   serial_team = this_thr->th.th_serial_team;
+  kmp_taskdata_t *curr_td = this_thr->th.th_current_task;
+  bool is_curr_task_expl =
+      curr_td->td_flags.tasktype ? true : false;
 
   /* utilize the serialized team held by this thread */
   KMP_DEBUG_ASSERT(serial_team);
@@ -1223,11 +1226,46 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
 
   bool do_the_check_now = false;
 
-  if (this_thr->th.th_team != serial_team) {
+  // FIXME VI3: Consider the case when thread creates new serialized region
+  //  inside an explicit task that is at the same time enclosed by two nested
+  //  serialized parallel regions. At this moment, th_current_task corresponds
+  //  to the explicit task.
+  //  team->t.t_serialized is greater that one, so else branch would be
+  //  executed. This wouldn't change th_current_task, so if the tool calls
+  //  (implicitly) __ompt_get_task_function with 0 as ancestor_leve,
+  //  it would get information about the explicit task instead of newly create
+  //  implicit task.
+  //  This showed as a problem after mentioned enty function had been changde
+  //  to use th_current_task instead of th_team. However, I'm still pretty sure
+  //  that even the old implementation of that function wouldn't work for this
+  //  case, since task_information are gathered from th_curren_task.
+  // As a simple work around, thread is forced to create a new serial team.
+  // Variable is_curr_task_expl should say whether thread is executing the
+  // explicit task.
+  // I'm not sure whether it is possible to reuse currently active serial team.
+  // If it would be possible, mentioned team would need to change parent to
+  // point to the explicit task, and then (after this implicit task is finidhed)
+  // switch back parent to point to the team of the region in which this serial
+  // team is created.
+  // TODO: Try to test old implementation if it's going to fail by attaching the
+  //  fake tool.
+
+
+  if (this_thr->th.th_team != serial_team || is_curr_task_expl) {
     // Nested level will be an index in the nested nthreads array
     int level = this_thr->th.th_team->t.t_level;
-
-    if (serial_team->t.t_serialized) {
+    // It is possible that an explicit task is nested inside unserialized region.
+    // In that case, thread may use serial_team, that will eventually be
+    // freed inside kmp_join_call. The mention team can eventually be freed inside
+    // __kmpc_end_serialized_parallel function. In order to prevent this, there are
+    // two possible option:
+    // 1. check inside mention function whether serialized region is enclosed by
+    //    a few explicit tasks that are also enclose by unserialized parallel region.
+    // 2. Whenever serialized region is nested inside an explicit task, allocate
+    //    new team and free it inside __kmpc_end_serialized_parallel.
+    // I think the second option is easier to implement and shouldn't introduce
+    // any significant penalties to the allocation overhead (at least I hope).
+    if (serial_team->t.t_serialized || is_curr_task_expl) {
       /* this serial team was already used
          TODO increase performance by making this locks more specific */
       kmp_team_t *new_team;
