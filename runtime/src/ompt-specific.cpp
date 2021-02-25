@@ -261,6 +261,8 @@ int __ompt_get_parallel_info_internal(int ancestor_level,
 // lightweight task team support
 //----------------------------------------------------------
 
+static __thread bool lwt_not_ready = false;
+
 void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr, int gtid,
                              ompt_data_t *ompt_pid, void *codeptr) {
   // initialize parallel_data with input, return address to parallel_data on
@@ -288,12 +290,13 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
   }
   link_lwt->heap = on_heap;
 
+  // mark that information about task at level 0 are unavailable
+  lwt_not_ready = true;
+
   // would be swap in the (on_stack) case.
   ompt_team_info_t tmp_team = lwt->ompt_team_info;
   link_lwt->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
   *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
-
-  // FIXME VI3: What if sample is delivered here.
 
   ompt_task_info_t tmp_task = lwt->ompt_task_info;
   link_lwt->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
@@ -304,12 +307,19 @@ void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
       thr->th.th_team->t.ompt_serialized_team_info;
   link_lwt->parent = my_parent;
   thr->th.th_team->t.ompt_serialized_team_info = link_lwt;
+
+  // mark that information about task at level 0 are available
+  lwt_not_ready = false;
 }
 
 ompt_data_t __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
   // FIXME VI3: What if sample is delivered here?
   ompt_lw_taskteam_t *lwtask = thr->th.th_team->t.ompt_serialized_team_info;
   KMP_DEBUG_ASSERT(lwtask);
+
+  // mark that information about task at level 0 are not available
+  lwt_not_ready = true;
+
   // Unlinking the task will result in invalidating the content of the
   // ompt_team_info that is going to be ended. Since the corresponding
   // parallel_data's content should be passed to the ompt_callback_parallel_end,
@@ -326,6 +336,9 @@ ompt_data_t __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
   ompt_task_info_t tmp_task = lwtask->ompt_task_info;
   lwtask->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
   *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+
+  // mark that information about task at level 0 are available
+  lwt_not_ready = false;
 
   if (lwtask->heap) {
     __kmp_free(lwtask);
@@ -369,6 +382,17 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
     return 0;
 
   ompt_lw_taskteam_t *lwt = NULL;
+
+  if (lwt_not_ready && level == 0) {
+    // Information about the innermost task may not be safe to be used yet
+    // (write operation), since the innermost lwt is not fully linked/unlinked.
+    // We can consider returning 1 instead.
+    // However, the tool should ignore the task at this level (even though
+    // it may be the fully formed in the sense that both team and task
+    // information are valid and the task_frames are present on thread's stack).
+    // FIXME VI3: Should return 1 instead?
+    return 0;
+  }
 
   while(ancestor_level > 0) {
     // If explicit task is placed inside nested serialized region,
