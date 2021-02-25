@@ -282,58 +282,57 @@ void __ompt_lw_taskteam_init(ompt_lw_taskteam_t *lwt, kmp_info_t *thr, int gtid,
 void __ompt_lw_taskteam_link(ompt_lw_taskteam_t *lwt, kmp_info_t *thr,
                              int on_heap) {
   ompt_lw_taskteam_t *link_lwt = lwt;
-  if (thr->th.th_team->t.t_serialized >
-      1) { // we already have a team, so link the new team and swap values
-    if (on_heap) { // the lw_taskteam cannot stay on stack, allocate it on heap
-      link_lwt =
-          (ompt_lw_taskteam_t *)__kmp_allocate(sizeof(ompt_lw_taskteam_t));
-    }
-    link_lwt->heap = on_heap;
-
-    // would be swap in the (on_stack) case.
-    ompt_team_info_t tmp_team = lwt->ompt_team_info;
-    link_lwt->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
-    *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
-
-    // FIXME VI3: What if sample is delivered here.
-
-    ompt_task_info_t tmp_task = lwt->ompt_task_info;
-    link_lwt->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
-    *OMPT_CUR_TASK_INFO(thr) = tmp_task;
-
-    // link the taskteam into the list of taskteams:
-    ompt_lw_taskteam_t *my_parent =
-        thr->th.th_team->t.ompt_serialized_team_info;
-    link_lwt->parent = my_parent;
-    thr->th.th_team->t.ompt_serialized_team_info = link_lwt;
-  } else {
-    // this is the first serialized team, so we just store the values in the
-    // team and drop the taskteam-object
-    *OMPT_CUR_TEAM_INFO(thr) = lwt->ompt_team_info;
-    *OMPT_CUR_TASK_INFO(thr) = lwt->ompt_task_info;
+  if (on_heap) { // the lw_taskteam cannot stay on stack, allocate it on heap
+    link_lwt =
+        (ompt_lw_taskteam_t *)__kmp_allocate(sizeof(ompt_lw_taskteam_t));
   }
+  link_lwt->heap = on_heap;
+
+  // would be swap in the (on_stack) case.
+  ompt_team_info_t tmp_team = lwt->ompt_team_info;
+  link_lwt->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
+  *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
+
+  // FIXME VI3: What if sample is delivered here.
+
+  ompt_task_info_t tmp_task = lwt->ompt_task_info;
+  link_lwt->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
+  *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+
+  // link the taskteam into the list of taskteams:
+  ompt_lw_taskteam_t *my_parent =
+      thr->th.th_team->t.ompt_serialized_team_info;
+  link_lwt->parent = my_parent;
+  thr->th.th_team->t.ompt_serialized_team_info = link_lwt;
 }
 
-void __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
+ompt_data_t __ompt_lw_taskteam_unlink(kmp_info_t *thr) {
   // FIXME VI3: What if sample is delivered here?
   ompt_lw_taskteam_t *lwtask = thr->th.th_team->t.ompt_serialized_team_info;
-  if (lwtask) {
-    thr->th.th_team->t.ompt_serialized_team_info = lwtask->parent;
+  KMP_DEBUG_ASSERT(lwtask);
+  // Unlinking the task will result in invalidating the content of the
+  // ompt_team_info that is going to be ended. Since the corresponding
+  // parallel_data's content should be passed to the ompt_callback_parallel_end,
+  // its content is going to be returned to the caller.
+  // Save it now to preserve it from being lost by invalidating it
+  ompt_data_t old_parallel_data = OMPT_CUR_TEAM_INFO(thr)->parallel_data;
 
-    ompt_team_info_t tmp_team = lwtask->ompt_team_info;
-    lwtask->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
-    *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
+  thr->th.th_team->t.ompt_serialized_team_info = lwtask->parent;
 
-    ompt_task_info_t tmp_task = lwtask->ompt_task_info;
-    lwtask->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
-    *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+  ompt_team_info_t tmp_team = lwtask->ompt_team_info;
+  lwtask->ompt_team_info = *OMPT_CUR_TEAM_INFO(thr);
+  *OMPT_CUR_TEAM_INFO(thr) = tmp_team;
 
-    if (lwtask->heap) {
-      __kmp_free(lwtask);
-      lwtask = NULL;
-    }
+  ompt_task_info_t tmp_task = lwtask->ompt_task_info;
+  lwtask->ompt_task_info = *OMPT_CUR_TASK_INFO(thr);
+  *OMPT_CUR_TASK_INFO(thr) = tmp_task;
+
+  if (lwtask->heap) {
+    __kmp_free(lwtask);
+    lwtask = NULL;
   }
-  //    return lwtask;
+  
+  return old_parallel_data;
 }
 
 //----------------------------------------------------------

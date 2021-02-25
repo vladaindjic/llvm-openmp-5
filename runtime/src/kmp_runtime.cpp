@@ -1454,19 +1454,21 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   serial_team->t.ompt_team_info.master_return_address = codeptr;
   if (ompt_enabled.enabled &&
       this_thr->th.ompt_thread_info.state != ompt_state_overhead) {
-    ompt_lw_taskteam_t lw_taskteam;
-    __ompt_lw_taskteam_init(&lw_taskteam, this_thr, global_tid,
-                            &ompt_parallel_data, codeptr);
-    if (do_the_check_now) {
-      KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_team_info.parallel_data.ptr == NULL);
-      KMP_DEBUG_ASSERT(serial_team->t.ompt_team_info.parallel_data.ptr == NULL);
-      // FIXME VI3: Thread shouldn't use parallel_data until after linking
-      //  lightweight task, I think.
+    // When creating the outermost region in serialized hierarchy
+    // (t.t_serialized == 1), th_team and th_current_task are initialized
+    // and ready to be used by the tool. If the tool stores something inside
+    // parallel_data or task_data after they're initialized but before
+    // this moment , then the __ompt_lw_taskteam_link is going
+    // to invalidate those values.
+    // It is better to skip linking the task in this case, since it's not
+    // necessary.
+    if (serial_team->t.t_serialized > 1) {
+      ompt_lw_taskteam_t lw_taskteam;
+      __ompt_lw_taskteam_init(&lw_taskteam, this_thr, global_tid,
+                              &ompt_parallel_data, codeptr);
+      __ompt_lw_taskteam_link(&lw_taskteam, this_thr, 1);
+      // don't use lw_taskteam after linking. content was swaped
     }
-
-    __ompt_lw_taskteam_link(&lw_taskteam, this_thr, 1);
-    // don't use lw_taskteam after linking. content was swaped
-
     ompt_frame_t *task_frame = &OMPT_CUR_TASK_INFO(this_thr)->frame;
     OMPT_FRAME_SET(task_frame, exit, OMPT_GET_FRAME_ADDRESS(0),
 		   (ompt_frame_runtime | OMPT_FRAME_POSITION_DEFAULT));

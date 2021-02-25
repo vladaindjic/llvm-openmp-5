@@ -667,13 +667,15 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
     }
   } else {
 #if OMPT_SUPPORT
-    // Store the parallel_data of the ending region before unlinking the lwtask
-    // invalidates it.
-    // Use the team information store inside this_thr->th.th_team (serial_team)
-    // and pass it to the ompt_callback_parallel_end.
-    ending_team = serial_team->t.ompt_team_info;
-    KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_serialized_team_info != NULL);
-    __ompt_lw_taskteam_unlink(this_thr);
+    // The parallel_data that corresponds to this team may be used until
+    // the lwt is unlinked. Until that point, the tool may receive the
+    // pointer to the parallel_data and use it to stores some value.
+    // In order to pass the written value back to the tool through
+    // dispatched ompt_callback_parallel_end, the result of unlinking
+    // the lwt is the parallel_data's content (not the same pointer though).
+    // Store returned value inside help variable ending_team in order to
+    // pass it to the mentioned callback.
+    ending_team.parallel_data = __ompt_lw_taskteam_unlink(this_thr);
 #endif
     if (__kmp_tasking_mode != tskm_immediate_exec) {
       KA_TRACE(20, ("__kmpc_end_serialized_parallel: T#%d decreasing nesting "
