@@ -401,10 +401,29 @@ int __ompt_get_task_info_internal(int ancestor_level, int *type,
       // access outer task
       taskdata = taskdata->ompt_task_info.scheduling_parent;
     } else {
-      if (team->t.t_serialized > 1) {
+      // I first tried to use team->t.t_serialized > 1 as indicator that
+      // there's at least one lwt.
+      // Consider the following case:
+      // #pragma omp parallel num_threads(2)     // region 1
+      //   #pragma omp parallel num_threads(1)   // region 2
+      //     #pragma omp parallel_num_threads(1) // region 3
+      // Thread is executing the __kmpc_end_serialized and is destroying
+      // region 3. Value of team->t.t_serialized was 2 at the time of
+      // entering the function. At some point, thread decrements the counter.
+      // If the sample is taken after that and if at the same time a tool
+      // calls ompt_get_task_info with the ancestor_level greater than 0,
+      // condition team->t.t_serialized > 1 fails and results in skipping
+      // the lwt of region 2.
+      if (team->t.ompt_serialized_team_info) {
+        // This indicates that there's at least one lwt linked for this team.
+        // Otherwise, there's no need to try to access to the lwt.
         // access outer serialized team
         lwt = lwt ? lwt->parent : team->t.ompt_serialized_team_info;
       }
+
+      // lwt cannot exist without team->t.ompt_serialized_team_info
+      KMP_DEBUG_ASSERT(!lwt || lwt && team->t.ompt_serialized_team_info);
+
       if (!lwt && taskdata) {
         // all lightweight tasks are exhausted
         // access to the outer implicit task and the corresponding team
