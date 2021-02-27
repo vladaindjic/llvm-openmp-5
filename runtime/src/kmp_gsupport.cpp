@@ -547,21 +547,29 @@ void __kmp_GOMP_parallel_end_internal(fork_context_e fork_context) {
   MKLOC(loc, "GOMP_parallel_end");
   KA_TRACE(20, ("GOMP_parallel_end: T#%d\n", gtid));
 
+#if OMPT_SUPPORT
+  if (ompt_enabled.enabled) {
+    // Note: implicit task is finished here, in the barrier we might
+    // schedule deferred tasks. deferred tasks don't see the
+    // implicit task on the stack.
+
+    // reset exit_frame of the enclosing task region
+
+    // This should also happen for the serialized regions too.
+    // Otherwise, if thread receives a sample
+    // before th_current_task->ompt_task_info has been changed
+    // (either by removing the outermost serialized task or by unlinking
+    // the lwt), thread will still see the exit frame of the finishing
+    // serialized parallel region (the one that is going to be ended
+    // by executing this function).
+    ompt_frame_t *child_frame = &OMPT_CUR_TASK_INFO(thr)->frame;
+    OMPT_FRAME_CLEAR(child_frame, exit);
+  }
+#endif
+
   if (!thr->th.th_team->t.t_serialized) {
     __kmp_run_after_invoked_task(gtid, __kmp_tid_from_gtid(gtid), thr,
                                  thr->th.th_team);
-
-#if OMPT_SUPPORT
-    if (ompt_enabled.enabled) {
-      // Note: implicit task is finished here, in the barrier we might
-      // schedule deferred tasks. deferred tasks don't see the
-      // implicit task on the stack.
-
-      // reset exit_frame of the enclosing task region
-      ompt_frame_t *child_frame = &OMPT_CUR_TASK_INFO(thr)->frame;
-      OMPT_FRAME_CLEAR(child_frame, exit);
-    }
-#endif
 
     __kmp_join_call(&loc, gtid
 #if OMPT_SUPPORT
