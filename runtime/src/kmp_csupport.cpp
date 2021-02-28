@@ -600,6 +600,25 @@ void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   this_thr->th.th_def_allocator = serial_team->t.t_def_allocator; // restore
 
   --serial_team->t.t_serialized;
+
+  // Assert if t_serialized matches ompt_serialized_info existence.
+  // Note that t_serialized is updated, but the eventual unlinking of lwt
+  // still hasn't happened.
+  KMP_DEBUG_ASSERT(
+      // Outermost serial team is going to be destroyed.
+      (serial_team->t.t_serialized == 0
+        && serial_team->t.ompt_serialized_team_info == NULL)
+      // The first nested serial_team (corresponds to the regoin 2 from
+      // below example) is going to be destroyed and the corresponding
+      // LWT is going to be unlinked.
+      // #omp parallel num_threads(1)    // region 1
+      //   #omp parallel num_threads(1)  // region 2
+      || (serial_team->t.t_serialized == 1
+          && serial_team->t.ompt_serialized_team_info != NULL)
+      // More than two serial region remained.
+      || (serial_team->t.t_serialized > 1
+          && serial_team->t.ompt_serialized_team_info != NULL))
+
   if (serial_team->t.t_serialized == 0) {
 
     KMP_DEBUG_ASSERT(this_thr->th.th_team->t.ompt_serialized_team_info == NULL);

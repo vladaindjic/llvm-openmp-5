@@ -1436,6 +1436,25 @@ void __kmp_serialized_parallel(ident_t *loc, kmp_int32 global_tid) {
   }
   KMP_CHECK_UPDATE(serial_team->t.t_cancel_request, cancel_noreq);
 
+  // Assert if t_serialized matches ompt_serialized_info existence.
+  // Note that t_serialized is updated, but the eventual linking of lwt
+  // still hasn't happened.
+  KMP_DEBUG_ASSERT(
+      // The outermost serial parallel region has been created and doesn't have
+      // corresponding lwt.
+      (serial_team->t.t_serialized == 1
+        && serial_team->t.ompt_serialized_team_info == NULL)
+      // The first nested serial region (region 2 from below example) is going
+      // to be created. Corresponding lwt still hasn't been linked.
+      // #omp parallel num_threads(1)    // region 1
+      //   #omp parallel num_threads(1)  // region 2
+      || (serial_team->t.t_serialized == 2
+          && serial_team->t.ompt_serialized_team_info == NULL)
+      // More than two nested serialized parallel regions, so there should be
+      // at least one lwt.
+      || (serial_team->t.t_serialized > 2
+          && serial_team->t.ompt_serialized_team_info != NULL));
+
   // Perform the display affinity functionality for
   // serialized parallel regions
   if (__kmp_display_affinity) {
