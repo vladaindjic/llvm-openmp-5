@@ -2469,12 +2469,6 @@ void __kmp_join_call(ident_t *loc, int gtid
 #if OMPT_SUPPORT
   ompt_data_t *parallel_data = &(team->t.ompt_team_info.parallel_data);
   void *codeptr = team->t.ompt_team_info.master_return_address;
-
-  // FIXME vi3: Store old value of parallel_data before freeing team.
-  // Since, ompt_callback_parallel_end is called after team has been free,
-  // it is possible that pointer to parallel_data points to a parallel_data
-  // of a new (recycled) team.
-  ompt_data_t old_parallel_data = *parallel_data;
 #endif
 
 #if USE_ITT_BUILD
@@ -2546,12 +2540,8 @@ void __kmp_join_call(ident_t *loc, int gtid
 
 #if OMPT_SUPPORT
     if (ompt_enabled.enabled) {
-      // __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
-      //                 codeptr);
-      // FIXME vi3: I think this is not necessary since this happens before freeing the team.
-      __kmp_join_ompt(gtid, master_th, parent_team, &old_parallel_data, fork_context,
-                      codeptr);
-
+       __kmp_join_ompt(gtid, master_th, parent_team, parallel_data, fork_context,
+                       codeptr);
     }
 #endif
 
@@ -2611,6 +2601,12 @@ void __kmp_join_call(ident_t *loc, int gtid
   if (root->r.r_active != master_active)
     root->r.r_active = master_active;
 
+  // read value of parallel_data before freeing the team
+  // Since, ompt_callback_parallel_end is called after team has been free,
+  // it is possible that pointer to parallel_data points to a parallel_data
+  // of a new (recycled) team.
+  ompt_data_t old_parallel_data = *parallel_data;
+  // I think sample delivered after this won't see the freed parallel_data.
   __kmp_free_team(root, team USE_NESTED_HOT_ARG(
                             master_th)); // this will free worker threads
 
